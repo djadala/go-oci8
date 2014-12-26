@@ -6,6 +6,20 @@ package oci8
 #include <string.h>
 
 #cgo pkg-config: oci8
+
+//void getDate(  void *buf, sb2 *y, ub1 *m, ub1 *d, ub1 *hh, ub1 *mm, ub1 *ss) {
+	
+//	OCIDateGetDate( buf, 
+//	   y, m, d
+	 
+//	 )
+	 
+//	OCIDateGetTime( buf,
+//	   hh, mm, ss
+	 
+//	 )
+//}
+ 
 */
 import "C"
 import (
@@ -21,6 +35,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+	"math"
+	"sync"
 )
 
 type DSN struct {
@@ -86,6 +102,7 @@ break_loop:
 	if !strings.HasPrefix(dsnString, "oracle://") {
 		dsnString = "oracle://" + dsnString
 	}
+	
 	u, err := url.Parse(dsnString)
 	if err != nil {
 		return nil, err
@@ -165,12 +182,17 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 		(*C.OCISvcCtx)(c.svc),
 		(*C.OCIError)(c.err),
 		60,
-		C.OCI_TRANS_NEW)
+		C.OCI_TRANS_READWRITE)  //C.OCI_TRANS_NEW
 	if rv == C.OCI_ERROR {
 		return nil, ociGetError(c.err)
 	}
 	return &OCI8Tx{c}, nil
 }
+
+var (
+	once sync.Once
+	rvInit C.sword
+	)
 
 func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) {
 	var (
@@ -191,17 +213,24 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		conn.attrs.Set(k, v)
 	}
 
-	rv := C.OCIInitialize(
-		C.OCI_DEFAULT,
-		nil,
-		nil,
-		nil,
-		nil)
-	if rv == C.OCI_ERROR {
+	once.Do(
+		func() {
+			rvInit = C.OCIInitialize(
+				C.OCI_DEFAULT|C.OCI_THREADED |C.OCI_OBJECT,
+				nil,
+				nil,
+				nil,
+				nil)
+		})
+		
+		//OCINlsCharSetNameToId()
+		//OCIEnvNlsCreate()
+
+	if rvInit == C.OCI_ERROR {
 		return nil, ociGetError(conn.err)
 	}
 
-	rv = C.OCIEnvInit(
+	rv := C.OCIEnvInit(
 		(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
 		C.OCI_DEFAULT,
 		0,
@@ -381,6 +410,30 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				return nil, ociGetError(s.c.err)
 			}
 		case []byte:
+			dty = C.SQLT_BIN
+			data = v.([]byte)
+			xdata := unsafe.Pointer(&data[0])
+			//boundParameters = append(boundParameters, oci8bind{dty, xdata})
+			rv := C.OCIBindByPos(
+				(*C.OCIStmt)(s.s),
+				&bp,
+				(*C.OCIError)(s.c.err),
+				C.ub4(i+1),
+				xdata,
+				C.sb4(len(data)),
+				dty,
+				nil,
+				nil,
+				nil,
+				0,
+				nil,
+				C.OCI_DEFAULT)
+			if rv == C.OCI_ERROR {
+				defer freeBoundParameters()
+				return nil, ociGetError(s.c.err)
+			}
+/*
+		case []byte:
 			// FIXME: Currently, CLOB not supported
 			dty = C.SQLT_BLOB
 			data = v.([]byte)
@@ -448,6 +501,11 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				defer freeBoundParameters()
 				return nil, ociGetError(s.c.err)
 			}
+*/ 
+//		case int64:
+//		case float64:
+//		case bool:
+//		case string:
 		case time.Time:
 			dty = C.SQLT_DAT
 			now := v.(time.Time).In(s.c.location)
@@ -554,7 +612,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		0,
 		nil,
 		nil,
-		C.OCI_DEFAULT)
+		C.OCI_DEFAULT)// OCI_COMMIT_ON_SUCCESS
 	if rv == C.OCI_ERROR {
 		return nil, ociGetError(s.c.err)
 	}
@@ -606,7 +664,11 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		switch tp {
 		case C.SQLT_NUM:
 			oci8cols[i].kind = C.SQLT_CHR
+		case C.SQLT_CHR, C.SQLT_AFC:  // SQLT_VCS SQLT_AFC SQLT_CLOB SQLT_AVC
+			lp *=4  //utf8 enc
+			oci8cols[i].kind = tp
 		default:
+		    fmt.Println(  "KIND=", int(tp), "size=", int(lp))
 			oci8cols[i].kind = tp
 		}
 		oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(np))[0:int(ns)])
@@ -631,6 +693,29 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				unsafe.Pointer(&oci8cols[i].pbuf),
 				-1,
 				oci8cols[i].kind,
+				unsafe.Pointer(&oci8cols[i].ind),
+				&oci8cols[i].rlen,
+				nil,
+				C.OCI_DEFAULT)
+		} else if tp == C.SQLT_TIMESTAMP {
+			rv = C.OCIDescriptorAlloc(
+				s.c.env,
+				&oci8cols[i].pbuf,
+				C.OCI_DTYPE_TIMESTAMP,
+				0,
+				nil)
+			if rv == C.OCI_ERROR {
+				return nil, ociGetError(s.c.err)
+			}
+            lp = C.ub2(unsafe.Sizeof( unsafe.Pointer(nil)))
+			rv = C.OCIDefineByPos(
+				(*C.OCIStmt)(s.s),
+				&defp,
+				(*C.OCIError)(s.c.err),
+				C.ub4(i+1),
+				unsafe.Pointer(&oci8cols[i].pbuf),
+				C.sb4(lp),
+				C.SQLT_TIMESTAMP,//oci8cols[i].kind,
 				unsafe.Pointer(&oci8cols[i].ind),
 				&oci8cols[i].rlen,
 				nil,
@@ -711,9 +796,12 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 		0,
 		nil,
 		nil,
-		C.OCI_DEFAULT)
+		C.OCI_DEFAULT)      //OCI_COMMIT_ON_SUCCESS
 	if rv == C.OCI_ERROR {
 		return nil, ociGetError(s.c.err)
+	}
+	if rv != C.OCI_SUCCESS {
+		fmt.Println( "OCI_SUCCESS!=", rv)
 	}
 	return &OCI8Result{s}, nil
 }
@@ -744,6 +832,10 @@ func (rc *OCI8Rows) Close() error {
 			C.OCIDescriptorFree(
 				col.pbuf,
 				C.OCI_DTYPE_LOB)
+		} else if col.kind == C.SQLT_TIMESTAMP {
+			C.OCIDescriptorFree(
+				col.pbuf,
+				C.OCI_DTYPE_TIMESTAMP)
 		} else {
 			C.free(col.pbuf)
 		}
@@ -777,6 +869,11 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 	if rv == C.OCI_NO_DATA {
 		return io.EOF
 	}
+	if rv != C.OCI_SUCCESS {
+		fmt.Println( "OCI_SUCCESS!=", rv)
+	}
+
+
 
 	for i := range dest {
 		if rc.cols[i].ind == -1 { //Null
@@ -787,6 +884,28 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		switch rc.cols[i].kind {
 		case C.SQLT_DAT:
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+		/*	
+        var (
+        y C.sb2
+        m, d C.ub1
+        hh, mm, ss C.ub1
+        )
+			C.getDate( &buf[0], 
+               &y, &m, &d,
+               &hh, &mm, &ss,
+			 
+			 )
+				dest[i] = time.Date(
+				int(y),
+				time.Month(m),
+				int(d),
+				int(hh)-1,
+				int(mm)-1,
+				int(ss)-1,
+				0,
+				rc.s.c.location)		 
+			*/ 
+			
 			//TODO Handle BCE dates (http://docs.oracle.com/cd/B12037_01/appdev.101/b10779/oci03typ.htm#438305)
 			//TODO Handle timezones (http://docs.oracle.com/cd/B12037_01/appdev.101/b10779/oci03typ.htm#443601)
 			dest[i] = time.Date(
@@ -798,6 +917,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				int(buf[6])-1,
 				0,
 				rc.s.c.location)
+				 
 		case C.SQLT_BLOB, C.SQLT_CLOB:
 			var bamt C.ub4
 			b := make([]byte, rc.cols[i].size)
@@ -818,6 +938,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			}
 			dest[i] = b
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_AVC:
+			fmt.Println("SQLT_CHR")
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
 			switch {
 			case rc.cols[i].ind == 0: //Normal
@@ -828,6 +949,143 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			default:
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
+
+		case C.SQLT_LVB:  // LONG VARRAW 
+			fmt.Println("LONG VARRAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+			dest[i] = nil
+		case C.SQLT_BIN:  // RAW
+		    buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			fmt.Println("RAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+			dest[i] = buf
+		case C.SQLT_LNG:  // LONG
+		    buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+		    fmt.Println("LONG  column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+			dest[i] = buf
+			
+			
+        case C.SQLT_IBFLOAT:
+			fmt.Print("SQLT_IBFLOAT")
+			fallthrough
+        case C.SQLT_IBDOUBLE:
+			fmt.Println("SQLT_IBDOUBLE")
+        colsize := rc.cols[i].size
+        buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:colsize]
+        if  colsize == 4 {
+			v := uint32( buf[3])
+			v|= uint32( buf[2])<<8
+			v|= uint32( buf[1])<<16
+			v|= uint32( buf[0])<<24
+			
+			//SOME ORACLE SHIT ?
+            if buf[0] & 0x80 == 0 {
+				v ^= 0xffffffff
+			} else {
+				v &= 0x7fffffff
+			}
+			
+			
+			//fmt.Printf("%x %x %x %x\n", buf[0], buf[1], buf[2], buf[3])
+			  
+			dest[i] = math.Float32frombits( v)
+		} else if colsize == 8 {
+			v := uint64( buf[7])
+			v|= uint64( buf[6])<<8
+			v|= uint64( buf[5])<<16
+			v|= uint64( buf[4])<<24
+			v|= uint64( buf[3])<<32
+			v|= uint64( buf[2])<<40
+			v|= uint64( buf[1])<<48
+			v|= uint64( buf[0])<<56
+
+			//SOME ORACLE SHIT ?
+            if buf[0] & 0x80 == 0 {
+				v ^= 0xffffffffffffffff
+			} else {
+				v &= 0x7fffffffffffffff
+			}
+
+			dest[i] = math.Float64frombits(v)
+		} else {
+			return errors.New(fmt.Sprintf("Unhandled binary float size: %d", colsize))
+		}
+        case C.SQLT_TIMESTAMP:
+        fmt.Println("SQLT_TIMESTAMP")
+        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+        /*
+        var uu C.ub4
+        fmt.Printf( "%p, %v\n", rc.cols[i].pbuf, C.OCIDateTimeCheck( 
+				rc.s.c.env,
+				(*C.OCIError)(rc.s.c.err),
+				(*C.OCIDateTime)(rc.cols[i].pbuf),
+				&uu,
+        ))
+        */      
+        var (
+        y C.sb2
+        m, d, hh, mm, ss C.ub1
+        ff C.ub4
+        )   
+        rv = C.OCIDateTimeGetDate(
+				rc.s.c.env,
+				(*C.OCIError)(rc.s.c.err),
+				(*C.OCIDateTime)(rc.cols[i].pbuf),
+				&y, 
+				&m, 
+				&d,
+        )
+			if rv == C.OCI_ERROR {
+				return ociGetError(rc.s.c.err)
+			}
+        rv = C.OCIDateTimeGetTime(
+				rc.s.c.env,
+				(*C.OCIError)(rc.s.c.err),
+				(*C.OCIDateTime)(rc.cols[i].pbuf),
+				&hh, 
+				&mm, 
+				&ss,
+				&ff,
+        )
+			if rv == C.OCI_ERROR {
+				return ociGetError(rc.s.c.err)
+			}
+
+
+
+        
+			dest[i] = time.Date(
+				int(y),
+				time.Month(m),
+				int(d),
+				int( hh),//-1,
+				int(mm),//-1
+				int(ss),//int(buf[6])-1,
+				int(ff),
+				rc.s.c.location)
+
+
+
+
+        case C.SQLT_TIMESTAMP_TZ:
+        fmt.Println("SQLT_TIMESTAMP_TZ")
+        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+        dest[i] = nil
+
+        case C.SQLT_TIMESTAMP_LTZ:
+        fmt.Println("SQLT_TIMESTAMP_LTZ")
+        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+        dest[i] = nil
+
+        case C.SQLT_INTERVAL_DS:
+        fmt.Println("SQLT_INTERVAL_DS")
+        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+        dest[i] = nil
+
+        case C.SQLT_INTERVAL_YM:
+        fmt.Println("SQLT_INTERVAL_YM")
+        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+        dest[i] = nil
+        
+        
 		default:
 			return errors.New(fmt.Sprintf("Unhandled column type: %d", rc.cols[i].kind))
 		}
