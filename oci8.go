@@ -216,7 +216,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	once.Do(
 		func() {
 			rvInit = C.OCIInitialize(
-				C.OCI_DEFAULT|C.OCI_THREADED |C.OCI_OBJECT,
+				C.OCI_DEFAULT|C.OCI_THREADED /*|C.OCI_OBJECT*/,
 				nil,
 				nil,
 				nil,
@@ -675,7 +675,8 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		oci8cols[i].size = int(lp)
 
 		var defp *C.OCIDefine
-		if tp == C.SQLT_CLOB || tp == C.SQLT_BLOB {
+		switch tp {
+		case C.SQLT_CLOB, C.SQLT_BLOB:
 			rv = C.OCIDescriptorAlloc(
 				s.c.env,
 				&oci8cols[i].pbuf,
@@ -697,7 +698,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				&oci8cols[i].rlen,
 				nil,
 				C.OCI_DEFAULT)
-		} else if tp == C.SQLT_TIMESTAMP {
+		case C.SQLT_TIMESTAMP:
 			rv = C.OCIDescriptorAlloc(
 				s.c.env,
 				&oci8cols[i].pbuf,
@@ -720,7 +721,32 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				&oci8cols[i].rlen,
 				nil,
 				C.OCI_DEFAULT)
-		} else {
+
+		case C.SQLT_INTERVAL_DS:
+			rv = C.OCIDescriptorAlloc(
+				s.c.env,
+				&oci8cols[i].pbuf,
+				C.OCI_DTYPE_INTERVAL_DS,
+				0,
+				nil)
+			if rv == C.OCI_ERROR {
+				return nil, ociGetError(s.c.err)
+			}
+            lp = C.ub2(unsafe.Sizeof( unsafe.Pointer(nil)))
+			rv = C.OCIDefineByPos(
+				(*C.OCIStmt)(s.s),
+				&defp,
+				(*C.OCIError)(s.c.err),
+				C.ub4(i+1),
+				unsafe.Pointer(&oci8cols[i].pbuf),
+				C.sb4(lp),
+				C.SQLT_INTERVAL_DS,//oci8cols[i].kind,
+				unsafe.Pointer(&oci8cols[i].ind),
+				&oci8cols[i].rlen,
+				nil,
+				C.OCI_DEFAULT)
+
+		default:
 			oci8cols[i].pbuf = C.malloc(C.size_t(lp) + 1)
 			rv = C.OCIDefineByPos(
 				(*C.OCIStmt)(s.s),
@@ -828,15 +854,20 @@ type OCI8Rows struct {
 
 func (rc *OCI8Rows) Close() error {
 	for _, col := range rc.cols {
-		if col.kind == C.SQLT_CLOB || col.kind == C.SQLT_BLOB {
+		switch col.kind {
+		case C.SQLT_CLOB, C.SQLT_BLOB:
 			C.OCIDescriptorFree(
 				col.pbuf,
 				C.OCI_DTYPE_LOB)
-		} else if col.kind == C.SQLT_TIMESTAMP {
+		case C.SQLT_TIMESTAMP:
 			C.OCIDescriptorFree(
 				col.pbuf,
 				C.OCI_DTYPE_TIMESTAMP)
-		} else {
+		case C.SQLT_INTERVAL_DS:	
+			C.OCIDescriptorFree(
+				col.pbuf,
+				C.OCI_DTYPE_INTERVAL_DS)
+		default:
 			C.free(col.pbuf)
 		}
 	}
@@ -1078,7 +1109,26 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
         case C.SQLT_INTERVAL_DS:
         fmt.Println("SQLT_INTERVAL_DS")
         fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-        dest[i] = nil
+        
+                var (
+        
+        d, hh, mm, ss, ff C.sb4
+        )   
+        rv = C.OCIIntervalGetDaySecond(
+				rc.s.c.env,
+				(*C.OCIError)(rc.s.c.err),
+				&d, 
+				&hh, 
+				&mm,
+				&ss,
+				&ff,
+				(*C.OCIInterval)(rc.cols[i].pbuf),
+        )
+			if rv != C.OCI_SUCCESS {
+				return ociGetError(rc.s.c.err)
+			}
+			
+        dest[i] = time.Duration( d) * time.Hour * 24 +  time.Duration( hh) * time.Hour +  time.Duration( mm) * time.Minute  +  time.Duration( ss) * time.Second +  time.Duration( ff) 
 
         case C.SQLT_INTERVAL_YM:
         fmt.Println("SQLT_INTERVAL_YM")
