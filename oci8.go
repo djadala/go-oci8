@@ -521,7 +521,37 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 			}
  
 //		case int64:
-//		case float64:
+		case float64:
+			fb := math.Float64bits( v.(float64))
+			if fb & 0x8000000000000000 != 0 {
+				fb ^= 0xffffffffffffffff
+			} else {
+				fb |= 0x8000000000000000
+			}
+             dty = C.SQLT_IBDOUBLE
+             data = []byte{ byte(fb>>56), byte(fb>>48), byte(fb>>40), byte(fb>>32), byte(fb>>24), byte(fb>>16), byte(fb>>8), byte(fb) }
+
+			cdata = C.CString(string(data))
+			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			rv := C.OCIBindByPos(
+				(*C.OCIStmt)(s.s),
+				&bp,
+				(*C.OCIError)(s.c.err),
+				C.ub4(i+1),
+				unsafe.Pointer(cdata),
+				C.sb4(len(data)),
+				dty,
+				nil,
+				nil,
+				nil,
+				0,
+				nil,
+				C.OCI_DEFAULT)
+			if rv == C.OCI_ERROR {
+				defer freeBoundParameters()
+				return nil, ociGetError(s.c.err)
+			}
+
 //		case bool:
 //		case string:
         /*
