@@ -39,10 +39,10 @@ import (
 	//"sync"
 )
 
-
+/*
 type IntervalYM struct { 
 	Days int64
-	/*isNil*/ Valid bool
+	Valid bool
 }
 //NUMTOYMINTERVAL( 0.1, 'MONTH') select INTERVAL '123456789-11' YEAR(9) TO MONTH  from dual;
 
@@ -95,6 +95,9 @@ func (d *IntervalDS)  Scan(value interface{}) error {
 	}
    	return errors.New("duration from non int64")
 }
+*/
+
+
 
 type DSN struct {
 	Host     string
@@ -249,12 +252,6 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 	c.inTransaction = true
 	return &OCI8Tx{c}, nil
 }
-/*
-var (
-	once sync.Once
-	rvInit C.sword
-	)
-*/
 
 func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) {
 	var (
@@ -274,40 +271,16 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	for k, v := range parseEnviron(os.Environ()) {
 		conn.attrs.Set(k, v)
 	}
-/*
-	once.Do(
-		func() {
-			rvInit = C.OCIInitialize(
-				C.OCI_DEFAULT|C.OCI_THREADED,
-				nil,
-				nil,
-				nil,
-				nil)
-		})
-		
-		//OCINlsCharSetNameToId()
-		//OCIEnvNlsCreate()
 
-	if rvInit == C.OCI_ERROR {
-		return nil, ociGetError(conn.err)
-	}
-
-	rv := C.OCIEnvInit(
+	rv :=  C.OCIEnvCreate(
 		(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
-		C.OCI_DEFAULT,
-		0,
-		nil)
-*/
-
-		rv :=  C.OCIEnvCreate(
-			(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
-				C.OCI_DEFAULT|C.OCI_THREADED,
-				nil,
-				nil,
-				nil,
-				nil,
-				0,
-				nil)
+			C.OCI_DEFAULT|C.OCI_THREADED,
+			nil,
+			nil,
+			nil,
+			nil,
+			0,
+			nil)
 
 
 
@@ -1074,6 +1047,33 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				&oci8cols[i].rlen,
 				nil,
 				C.OCI_DEFAULT)
+				
+		case C.SQLT_INTERVAL_YM:
+			rv = C.OCIDescriptorAlloc(
+				s.c.env,
+				&oci8cols[i].pbuf,
+				C.OCI_DTYPE_INTERVAL_YM,
+				0,
+				nil)
+			if rv == C.OCI_ERROR {
+				return nil, ociGetError(s.c.err)
+			}
+            lp = C.ub2(unsafe.Sizeof( unsafe.Pointer(nil)))
+			rv = C.OCIDefineByPos(
+				(*C.OCIStmt)(s.s),
+				&defp,
+				(*C.OCIError)(s.c.err),
+				C.ub4(i+1),
+				unsafe.Pointer(&oci8cols[i].pbuf),
+				C.sb4(lp),
+				C.SQLT_INTERVAL_YM,//oci8cols[i].kind,
+				unsafe.Pointer(&oci8cols[i].ind),
+				&oci8cols[i].rlen,
+				nil,
+				C.OCI_DEFAULT)
+
+
+
 
 		default:
 			oci8cols[i].pbuf = C.malloc(C.size_t(lp) + 1)
@@ -1565,7 +1565,23 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
         case C.SQLT_INTERVAL_YM:
         fmt.Println("SQLT_INTERVAL_YM")
         fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-        dest[i] = nil
+        
+                var (
+        
+        y, m C.sb4
+        )   
+        rv = C.OCIIntervalGetYearMonth(
+				rc.s.c.env,
+				(*C.OCIError)(rc.s.c.err),
+				&y, 
+				&m, 
+				(*C.OCIInterval)(rc.cols[i].pbuf),
+        )
+			if rv != C.OCI_SUCCESS {
+				return ociGetError(rc.s.c.err)
+			}
+       
+        dest[i] = int64(y)*12 + int64(m)
         
         
 		default:
