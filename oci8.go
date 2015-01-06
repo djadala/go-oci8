@@ -36,8 +36,65 @@ import (
 	"time"
 	"unsafe"
 	"math"
-	"sync"
+	//"sync"
 )
+
+
+type IntervalYM struct { 
+	Days int64
+	/*isNil*/ Valid bool
+}
+//NUMTOYMINTERVAL( 0.1, 'MONTH') select INTERVAL '123456789-11' YEAR(9) TO MONTH  from dual;
+
+type IntervalDS struct { 
+	time.Duration
+	Valid bool
+}
+
+func (d *IntervalDS) Value() (driver.Value, error) {
+	if !d.Valid {
+		return nil, nil
+	}
+	sign := '+'
+	ld := d.Duration
+	if d.Duration < 0 {
+		sign = '-'
+		ld = -d.Duration
+	}
+	days := ld / (time.Hour*24)
+	ld  %= time.Hour*24
+	
+	hours := ld / time.Hour
+	ld  %= time.Hour
+	
+	minutes := ld / time.Minute
+	ld  %= time.Minute
+	
+	seconds := ld / time.Second
+	ld  %= time.Second
+	
+	return fmt.Sprintf( "INTERVAL '%c%09d %02d:%02d:%02d.%09d' DAY(9) TO SECOND(9)", 
+	sign, days, hours, minutes, seconds, ld), nil
+	
+	//NUMTODSINTERVAL( 0.0000000001, 'SECOND')
+}
+
+func (d *IntervalDS)  Scan(value interface{}) error {
+	if value == nil {
+		d.Duration, d.Valid = 0, false
+    	return nil
+    }
+   	d.Valid = true
+   	switch v := value.(type) {
+	case nil:
+		d.Valid = false
+    	return nil
+    case int64:
+		d.Valid = true
+		d.Duration = time.Duration(v)
+	}
+   	return errors.New("duration from non int64")
+}
 
 type DSN struct {
 	Host     string
@@ -192,11 +249,12 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 	c.inTransaction = true
 	return &OCI8Tx{c}, nil
 }
-
+/*
 var (
 	once sync.Once
 	rvInit C.sword
 	)
+*/
 
 func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) {
 	var (
@@ -216,11 +274,11 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	for k, v := range parseEnviron(os.Environ()) {
 		conn.attrs.Set(k, v)
 	}
-
+/*
 	once.Do(
 		func() {
 			rvInit = C.OCIInitialize(
-				C.OCI_DEFAULT|C.OCI_THREADED /*|C.OCI_OBJECT*/,
+				C.OCI_DEFAULT|C.OCI_THREADED,
 				nil,
 				nil,
 				nil,
@@ -239,6 +297,19 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		C.OCI_DEFAULT,
 		0,
 		nil)
+*/
+
+		rv :=  C.OCIEnvCreate(
+			(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
+				C.OCI_DEFAULT|C.OCI_THREADED,
+				nil,
+				nil,
+				nil,
+				nil,
+				0,
+				nil)
+
+
 
 	rv = C.OCIHandleAlloc(
 		conn.env,
@@ -520,7 +591,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				}
 			}
  
-//		case int64:
 		case float64:
 			fb := math.Float64bits( v.(float64))
 			if fb & 0x8000000000000000 != 0 {
@@ -647,7 +717,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				defer freeBoundParameters()
 				return nil, ociGetError(s.c.err)
 			}
-			
+			/*
             var ( 
 				lll C.ub4
 				bbuf  [500]C.OraText
@@ -670,6 +740,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				return nil, ociGetError(s.c.err)
 			}
 			fmt.Println( int(rv),  C.GoString( (*C.char)(unsafe.Pointer(&bbuf[0]))))
+		    */
 		case string:
 		if v := v.(string); len(v) >= 4000 {
 				dty = C.SQLT_BLOB
@@ -764,8 +835,10 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				return nil, ociGetError(s.c.err)
 			}
 		}
+//		case int64:
 	    //fallthrough
 		default:
+		fmt.Printf( "%T\n", v)
 			dty = C.SQLT_STR
 			data = []byte(fmt.Sprintf("%v", v))
 			data = append(data, 0)
@@ -1135,6 +1208,10 @@ func (rc *OCI8Rows) Close() error {
 			C.OCIDescriptorFree(
 				col.pbuf,
 				C.OCI_DTYPE_INTERVAL_DS)
+		case C.SQLT_INTERVAL_YM:	
+			C.OCIDescriptorFree(
+				col.pbuf,
+				C.OCI_DTYPE_INTERVAL_YM)
 		default:
 			C.free(col.pbuf)
 		}
@@ -1373,7 +1450,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 
 
 
-        case C.SQLT_TIMESTAMP_TZ:
+        case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
         fmt.Println("SQLT_TIMESTAMP_TZ")
         fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
         var (
@@ -1456,10 +1533,10 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				loc)
 			
 
-        case C.SQLT_TIMESTAMP_LTZ:
-        fmt.Println("SQLT_TIMESTAMP_LTZ")
-        fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-        dest[i] = nil
+       // case C.SQLT_TIMESTAMP_LTZ:
+       // fmt.Println("SQLT_TIMESTAMP_LTZ")
+       // fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+       // dest[i] = nil
 
         case C.SQLT_INTERVAL_DS:
         fmt.Println("SQLT_INTERVAL_DS")
