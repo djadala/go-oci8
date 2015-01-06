@@ -415,6 +415,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 		dty             C.ub2
 		data            []byte
 		cdata           *C.char
+        clen             C.sb4
 		boundParameters []oci8bind
 	)
 
@@ -837,7 +838,33 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 				return nil, ociGetError(s.c.err)
 			}
 		}
+		_ = clen
+
+/*
+		if rv := C.OCIBindByPos(
+			(*C.OCIStmt)(s.s),
+			&bp,
+			(*C.OCIError)(s.c.err),
+			C.ub4(i+1),
+			unsafe.Pointer( cdata),
+			clen,
+			dty,
+			nil,
+			nil,
+			nil,
+			0,
+			nil,
+			C.OCI_DEFAULT); rv == C.OCI_ERROR {
+				defer freeBoundParameters()
+				return nil, ociGetError(s.c.err)
+		}
+*/
+
+		
+		
 	}
+
+
 	return freeBoundParameters, nil
 }
 
