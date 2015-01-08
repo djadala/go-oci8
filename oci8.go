@@ -547,7 +547,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 			clen = 8
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
-//		case bool:
 			 
 		case time.Time:
 
@@ -611,30 +610,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
             data=nil
             cdata = (*C.char)(pt)
 			 
-			/*
-            var ( 
-				lll C.ub4
-				bbuf  [500]C.OraText
-				)
-			lll = 500	
-			rv = C.OCIDateTimeToText(
-				s.c.env,
-				(*C.OCIError)(s.c.err),
-				(*C.OCIDateTime)(pt),
-				nil,
-				0,
-				9,
-				nil,
-				0,
-				&lll,
-				&bbuf[0],
-			)
-			if rv == C.OCI_ERROR {
-				defer freeBoundParameters()
-				return nil, ociGetError(s.c.err)
-			}
-			fmt.Println( int(rv),  C.GoString( (*C.char)(unsafe.Pointer(&bbuf[0]))))
-		    */
 		case string:
 		if v := v.(string); len(v) >= 4000 {
 				dty = C.SQLT_BLOB
@@ -711,6 +686,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		}
 //		case int64:
+//		case bool:
 	    //fallthrough
 		default:
 			//fmt.Printf( "%T\n", v)
