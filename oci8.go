@@ -8,6 +8,23 @@ package oci8
 #cgo pkg-config: oci8
 
 
+
+int CNumInput( dvoid *ss, OCIError *err) {
+	int num = 0;
+	//sword rv
+	//rv = 
+	OCIAttrGet(
+		ss,
+		OCI_HTYPE_STMT,
+		&num,
+		NULL,
+		OCI_ATTR_BIND_COUNT,
+		err);
+	
+	return num;
+}
+
+
 */
 import "C"
 import (
@@ -209,7 +226,7 @@ func (tx *OCI8Tx) Rollback() error {
 	if rv := C.OCITransRollback(
 		(*C.OCISvcCtx)(tx.c.svc),
 		(*C.OCIError)(tx.c.err),
-		0) ; rv != C.OCI_SUCCESS {
+		0); rv != C.OCI_SUCCESS {
 		return ociGetError(tx.c.err)
 	}
 	return nil
@@ -225,12 +242,12 @@ func (c *OCI8Conn) exec(cmd string) error {
 }
 
 func (c *OCI8Conn) Begin() (driver.Tx, error) {
-	rv := C.OCITransStart(
+	if rv := C.OCITransStart(
 		(*C.OCISvcCtx)(c.svc),
 		(*C.OCIError)(c.err),
 		60,
-		C.OCI_TRANS_READWRITE) //C.OCI_TRANS_NEW
-	if rv == C.OCI_ERROR {
+		C.OCI_TRANS_READWRITE); //C.OCI_TRANS_NEW
+	rv != C.OCI_SUCCESS {
 		return nil, ociGetError(c.err)
 	}
 	c.inTransaction = true
@@ -256,7 +273,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		conn.attrs.Set(k, v)
 	}
 
-	rv := C.OCIEnvCreate(
+	if rv := C.OCIEnvCreate(
 		(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
 		C.OCI_DEFAULT|C.OCI_THREADED,
 		nil,
@@ -264,15 +281,17 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		nil,
 		nil,
 		0,
-		nil)
+		nil); rv != C.OCI_SUCCESS {
+		return nil, ociGetError(conn.err)
+	}
 
-	rv = C.OCIHandleAlloc(
+
+	if rv := C.OCIHandleAlloc(
 		conn.env,
 		&conn.err,
 		C.OCI_HTYPE_ERROR,
 		0,
-		nil)
-	if rv == C.OCI_ERROR {
+		nil); rv != C.OCI_SUCCESS {
 		return nil, ociGetError(conn.err)
 	}
 
@@ -289,7 +308,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	ppass := C.CString(dsn.Password)
 	defer C.free(unsafe.Pointer(ppass))
 
-	rv = C.OCILogon(
+	if rv := C.OCILogon(
 		(*C.OCIEnv)(conn.env),
 		(*C.OCIError)(conn.err),
 		(**C.OCISvcCtx)(unsafe.Pointer(&conn.svc)),
@@ -298,8 +317,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		(*C.OraText)(unsafe.Pointer(ppass)),
 		C.ub4(C.strlen(ppass)),
 		(*C.OraText)(unsafe.Pointer(phost)),
-		C.ub4(phostlen))
-	if rv == C.OCI_ERROR {
+		C.ub4(phostlen)); rv != C.OCI_SUCCESS {
 		return nil, ociGetError(conn.err)
 	}
 
@@ -309,11 +327,14 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 }
 
 func (c *OCI8Conn) Close() error {
-	rv := C.OCILogoff(
+	var err error
+	
+	if rv := C.OCILogoff(
 		(*C.OCISvcCtx)(c.svc),
-		(*C.OCIError)(c.err))
-	if rv == C.OCI_ERROR {
-		return ociGetError(c.err)
+		(*C.OCIError)(c.err)); rv != C.OCI_SUCCESS {
+		err = ociGetError(c.err)
+	} else {
+		err = nil
 	}
 
 	C.OCIHandleFree(
@@ -323,7 +344,8 @@ func (c *OCI8Conn) Close() error {
 	c.svc = nil
 	c.env = nil
 	c.err = nil
-	return nil
+
+	return err
 }
 
 type OCI8Stmt struct {
@@ -337,24 +359,22 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 	defer C.free(unsafe.Pointer(pquery))
 	var s unsafe.Pointer
 
-	rv := C.OCIHandleAlloc(
+	if rv := C.OCIHandleAlloc(
 		c.env,
 		&s,
 		C.OCI_HTYPE_STMT,
 		0,
-		nil)
-	if rv == C.OCI_ERROR {
+		nil); rv != C.OCI_SUCCESS {
 		return nil, ociGetError(c.err)
 	}
 
-	rv = C.OCIStmtPrepare(
+	if rv := C.OCIStmtPrepare(
 		(*C.OCIStmt)(s),
 		(*C.OCIError)(c.err),
 		(*C.OraText)(unsafe.Pointer(pquery)),
 		C.ub4(C.strlen(pquery)),
 		C.ub4(C.OCI_NTV_SYNTAX),
-		C.ub4(C.OCI_DEFAULT))
-	if rv == C.OCI_ERROR {
+		C.ub4(C.OCI_DEFAULT)); rv != C.OCI_SUCCESS {
 		return nil, ociGetError(c.err)
 	}
 
@@ -376,6 +396,7 @@ func (s *OCI8Stmt) Close() error {
 }
 
 func (s *OCI8Stmt) NumInput() int {
+	/*
 	var num C.int
 	C.OCIAttrGet(
 		s.s,
@@ -385,6 +406,8 @@ func (s *OCI8Stmt) NumInput() int {
 		C.OCI_ATTR_BIND_COUNT,
 		(*C.OCIError)(s.c.err))
 	return int(num)
+	*/
+	return int( C.CNumInput( s.s, (*C.OCIError)(s.c.err)))
 }
 
 func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err error) {
