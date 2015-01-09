@@ -58,6 +58,39 @@ retUb4 OCIAttrGetUb4( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
 	return vvv;
 }
 
+typedef struct {
+    char *ptr; 
+	ub4 size;
+	sword rv;
+} retString;
+retString OCIAttrGetString( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+	retString vvv = {NULL,0,0};
+	vvv.rv = OCIAttrGet(
+		ss,
+		hType,
+		&vvv.ptr,
+		&vvv.size,
+		aType,
+		err);
+	
+	return vvv;
+}
+
+typedef struct {
+    dvoid *ptr; 
+	sword rv;
+} retParam;
+retParam OCIParamGetRet( dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
+    retParam vvv = { NULL, 0}; 
+	vvv.rv = OCIParamGet(
+			ss,
+			hType,
+			err,
+			&vvv.ptr,
+			pos);
+	return vvv;
+}
+
 */
 import "C"
 import (
@@ -611,16 +644,33 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	oci8cols := make([]oci8col, rc)
 	for i := 0; i < rc; i++ {
 		var p unsafe.Pointer
-		var np *C.char
-		var ns C.ub4
+		//var np *C.char
+		//var ns C.ub4
 		var tp C.ub2
 		var lp C.ub2
+		
+		if rp:= C.OCIParamGetRet( s.s, C.OCI_HTYPE_STMT, (*C.OCIError)(s.c.err), C.ub4(i+1)) ;
+		rp.rv != C.OCI_SUCCESS {
+			return nil, ociGetError(s.c.err)
+		} else {
+			p = rp.ptr
+		}
+		/*
 		C.OCIParamGet(
 			s.s,
 			C.OCI_HTYPE_STMT,
 			(*C.OCIError)(s.c.err),
-			(*unsafe.Pointer)(unsafe.Pointer(&p)),
+			&p,//(*unsafe.Pointer)(unsafe.Pointer(&p)),
 			C.ub4(i+1))
+		*/
+		
+		if tpr := C.OCIAttrGetUb2( p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_TYPE, (*C.OCIError)(s.c.err));
+		tpr.rv != C.OCI_SUCCESS {
+			return nil, ociGetError(s.c.err)
+		} else {
+			tp = tpr.num
+		}
+		/*
 		C.OCIAttrGet(
 			p,
 			C.OCI_DTYPE_PARAM,
@@ -628,6 +678,20 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			nil,
 			C.OCI_ATTR_DATA_TYPE,
 			(*C.OCIError)(s.c.err))
+		*/
+		
+
+		if nsr := C.OCIAttrGetString( p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_NAME, (*C.OCIError)(s.c.err));
+		nsr.rv != C.OCI_SUCCESS {
+			return nil, ociGetError(s.c.err)
+		} else {
+			//ns = nsr.size
+			//np = nsr.ptr
+			
+			oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(nsr.ptr))[0:int(nsr.size)])
+			
+		}
+		/*	
 		C.OCIAttrGet(
 			p,
 			C.OCI_DTYPE_PARAM,
@@ -635,6 +699,15 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			&ns,
 			C.OCI_ATTR_NAME,
 			(*C.OCIError)(s.c.err))
+			*/
+
+		if lpr := C.OCIAttrGetUb2( p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_SIZE, (*C.OCIError)(s.c.err));
+		lpr.rv != C.OCI_SUCCESS {
+			return nil, ociGetError(s.c.err)
+		} else {
+			lp = lpr.num
+		}
+		/*	 
 		C.OCIAttrGet(
 			p,
 			C.OCI_DTYPE_PARAM,
@@ -642,7 +715,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			nil,
 			C.OCI_ATTR_DATA_SIZE,
 			(*C.OCIError)(s.c.err))
-
+        */
 		switch tp {
 		case C.SQLT_NUM:
 			oci8cols[i].kind = C.SQLT_CHR
@@ -658,7 +731,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			fmt.Println("KIND=", int(tp), "size=", int(lp))
 			oci8cols[i].kind = tp
 		}
-		oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(np))[0:int(ns)])
+		//oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(np))[0:int(ns)])
 		oci8cols[i].size = int(lp)
 
 		var (
