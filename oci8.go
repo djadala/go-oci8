@@ -78,64 +78,6 @@ import (
 	//"sync"
 )
 
-/*
-type IntervalYM struct {
-	Days int64
-	Valid bool
-}
-//NUMTOYMINTERVAL( 0.1, 'MONTH') select INTERVAL '123456789-11' YEAR(9) TO MONTH  from dual;
-
-type IntervalDS struct {
-	time.Duration
-	Valid bool
-}
-
-func (d *IntervalDS) Value() (driver.Value, error) {
-	if !d.Valid {
-		return nil, nil
-	}
-	sign := '+'
-	ld := d.Duration
-	if d.Duration < 0 {
-		sign = '-'
-		ld = -d.Duration
-	}
-	days := ld / (time.Hour*24)
-	ld  %= time.Hour*24
-
-	hours := ld / time.Hour
-	ld  %= time.Hour
-
-	minutes := ld / time.Minute
-	ld  %= time.Minute
-
-	seconds := ld / time.Second
-	ld  %= time.Second
-
-	return fmt.Sprintf( "INTERVAL '%c%09d %02d:%02d:%02d.%09d' DAY(9) TO SECOND(9)",
-	sign, days, hours, minutes, seconds, ld), nil
-
-	//NUMTODSINTERVAL( 0.0000000001, 'SECOND')
-}
-
-func (d *IntervalDS)  Scan(value interface{}) error {
-	if value == nil {
-		d.Duration, d.Valid = 0, false
-    	return nil
-    }
-   	d.Valid = true
-   	switch v := value.(type) {
-	case nil:
-		d.Valid = false
-    	return nil
-    case int64:
-		d.Valid = true
-		d.Duration = time.Duration(v)
-	}
-   	return errors.New("duration from non int64")
-}
-*/
-
 type DSN struct {
 	Host     string
 	Port     int
@@ -430,17 +372,6 @@ func (s *OCI8Stmt) Close() error {
 }
 
 func (s *OCI8Stmt) NumInput() int {
-	/*
-	var num C.int
-	C.OCIAttrGet(
-		s.s,
-		C.OCI_HTYPE_STMT,
-		unsafe.Pointer(&num),
-		nil,
-		C.OCI_ATTR_BIND_COUNT,
-		(*C.OCIError)(s.c.err))
-	return int(num)
-	*/
 	r := C.OCIAttrGetInt( s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_BIND_COUNT, (*C.OCIError)(s.c.err))
 	if r.rv != C.OCI_SUCCESS {
 		log.Println( "NumInput:", ociGetError(s.c.err))
@@ -511,89 +442,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 			clen = C.sb4(len(v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
-			/*
-			   			const maxBlob = 10000
-			   		    if v := v.([]byte); len(v) <= maxBlob {
-			   				dty = C.SQLT_BIN
-			   				data = nil
-			   				cdata = CByte( v)
-			   				clen = C.sb4( len(v))
-			   				boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
-			   			} else {
-			   				dty = C.SQLT_BLOB
-
-			                   //TODO boundParameters call OCILobFreeTemporary(svchp,errhp, plob)
-
-
-			   ////////////////////////
-
-			   				data = v//.([]byte)
-			   				var bamt C.ub4
-			   				var pbuf unsafe.Pointer
-			   				if rv := C.OCIDescriptorAlloc(
-			   					s.c.env,
-			   					&pbuf,
-			   					C.OCI_DTYPE_LOB,
-			   					0,
-			   					nil); rv != C.OCI_SUCCESS {
-
-			   					defer freeBoundParameters()
-			   					return nil, ociGetError(s.c.err)
-			   				}
-
-			   				rv = C.OCILobCreateTemporary(
-			   					(*C.OCISvcCtx)(s.c.svc),
-			   					(*C.OCIError)(s.c.err),
-			   					(*C.OCILobLocator)(pbuf),
-			   					0,
-			   					C.SQLCS_IMPLICIT,
-			   					C.OCI_TEMP_BLOB,
-			   					C.OCI_ATTR_NOCACHE,
-			   					C.OCI_DURATION_SESSION)
-			   				if rv == C.OCI_ERROR {
-			   					defer freeBoundParameters()
-			   					return nil, ociGetError(s.c.err)
-			   				}
-
-			   				bamt = C.ub4(len(data))
-			   				rv = C.OCILobWrite(
-			   					(*C.OCISvcCtx)(s.c.svc),
-			   					(*C.OCIError)(s.c.err),
-			   					(*C.OCILobLocator)(pbuf),
-			   					&bamt,
-			   					1,
-			   					unsafe.Pointer(&data[0]),
-			   					C.ub4(len(data)),
-			   					C.OCI_ONE_PIECE,
-			   					nil,
-			   					nil,
-			   					0,
-			   					C.SQLCS_IMPLICIT)
-			   				if rv == C.OCI_ERROR {
-			   					defer freeBoundParameters()
-			   					return nil, ociGetError(s.c.err)
-			   				}
-			   				boundParameters = append(boundParameters, oci8bind{dty, pbuf})
-			   				rv = C.OCIBindByPos(
-			   					(*C.OCIStmt)(s.s),
-			   					&bp,
-			   					(*C.OCIError)(s.c.err),
-			   					C.ub4(i+1),
-			   					unsafe.Pointer(&pbuf),
-			   					0,
-			   					dty,
-			   					nil,
-			   					nil,
-			   					nil,
-			   					0,
-			   					nil,
-			   					C.OCI_DEFAULT)
-			   				if rv == C.OCI_ERROR {
-			   					defer freeBoundParameters()
-			   					return nil, ociGetError(s.c.err)
-			   				}
-			   			}
-			*/
 		case float64:
 			fb := math.Float64bits(v.(float64))
 			if fb&0x8000000000000000 != 0 {
@@ -667,83 +515,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (freeBoundParameters func(), err er
 			cdata = (*C.char)(pt)
 
 		case string:
-			/*
-						if v := v.(string); len(v) >= 4000 {
-								dty = C.SQLT_CLOB
-								data = []byte(v)
-								var bamt C.ub4
-								var pbuf unsafe.Pointer
-								rv := C.OCIDescriptorAlloc(
-									s.c.env,
-									&pbuf,
-									C.OCI_DTYPE_LOB,
-									0,
-									nil)
-								if rv == C.OCI_ERROR {
-									defer freeBoundParameters()
-									return nil, ociGetError(s.c.err)
-								}
-
-								rv = C.OCILobCreateTemporary(
-									(*C.OCISvcCtx)(s.c.svc),
-									(*C.OCIError)(s.c.err),
-									(*C.OCILobLocator)(pbuf),
-									0,
-									C.SQLCS_IMPLICIT,
-									C.OCI_TEMP_CLOB,
-									C.OCI_ATTR_NOCACHE,
-									C.OCI_DURATION_SESSION)
-								if rv == C.OCI_ERROR {
-									defer freeBoundParameters()
-									return nil, ociGetError(s.c.err)
-								}
-
-								bamt = C.ub4(len(data))
-								rv = C.OCILobWrite(
-									(*C.OCISvcCtx)(s.c.svc),
-									(*C.OCIError)(s.c.err),
-									(*C.OCILobLocator)(pbuf),
-									&bamt,
-									1,
-									unsafe.Pointer(&data[0]),
-									C.ub4(len(data)),
-									C.OCI_ONE_PIECE,
-									nil,
-									nil,
-									0,
-									C.SQLCS_IMPLICIT)
-								if rv == C.OCI_ERROR {
-									defer freeBoundParameters()
-									return nil, ociGetError(s.c.err)
-								}
-								boundParameters = append(boundParameters, oci8bind{dty, pbuf})
-								rv = C.OCIBindByPos(
-									(*C.OCIStmt)(s.s),
-									&bp,
-									(*C.OCIError)(s.c.err),
-									C.ub4(i+1),
-									unsafe.Pointer(&pbuf),
-									0,
-									dty,
-									nil,
-									nil,
-									nil,
-									0,
-									nil,
-									C.OCI_DEFAULT)
-								if rv == C.OCI_ERROR {
-									defer freeBoundParameters()
-									return nil, ociGetError(s.c.err)
-								}
-						} else {
-							dty = C.SQLT_STR
-				            data = nil
-							cdata = C.CString( v)
-							clen = C.sb4( len(v)+1)
-							boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
-						}
-			*/
-
 			v := v.(string)
 			dty = C.SQLT_STR
 			cdata = C.CString(v)
@@ -996,21 +767,6 @@ type OCI8Result struct {
 }
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	/*
-	var t C.ub4
-	rv := C.OCIAttrGet(
-		r.s.s,
-		C.OCI_HTYPE_STMT,
-		unsafe.Pointer(&t),
-		nil,
-		C.OCI_ATTR_ROWID,
-		(*C.OCIError)(r.s.c.err))
-	if rv == C.OCI_ERROR {
-		return 0, ociGetError(r.s.c.err)
-	}
-	return int64(t), nil
-	
-	*/
 	retUb4 := C.OCIAttrGetUb4( r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(r.s.c.err));
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(r.s.c.err)
@@ -1019,20 +775,6 @@ func (r *OCI8Result) LastInsertId() (int64, error) {
 }
 
 func (r *OCI8Result) RowsAffected() (int64, error) {
-	/*
-	var t C.ub4
-	rv := C.OCIAttrGet(
-		r.s.s,
-		C.OCI_HTYPE_STMT,
-		unsafe.Pointer(&t),
-		nil,
-		C.OCI_ATTR_ROW_COUNT,
-		(*C.OCIError)(r.s.c.err))
-	if rv == C.OCI_ERROR {
-		return 0, ociGetError(r.s.c.err)
-	}
-	return int64(t), nil
-	*/
  	retUb4 := C.OCIAttrGetUb4( r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(r.s.c.err));
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(r.s.c.err)
