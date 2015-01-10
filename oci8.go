@@ -724,6 +724,11 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].size = int(lp)
 			oci8cols[i].pbuf = C.malloc( C.size_t( oci8cols[i].size) + 1 )
 			
+		case C.SQLT_IBDOUBLE, C.SQLT_IBFLOAT:
+			oci8cols[i].kind = C.SQLT_IBDOUBLE
+			oci8cols[i].size = int(8)
+			oci8cols[i].pbuf = C.malloc( 8)
+			
 		case C.SQLT_CLOB, C.SQLT_BLOB:
 		
 		    if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_LOB);
@@ -853,8 +858,9 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			dty = C.SQLT_INTERVAL_YM //oci8cols[i].kind
           */
 		default:
+		    log.Println( "handling type", tp, "as string") //unknown typekode
 			oci8cols[i].pbuf = C.malloc(C.size_t(lp) + 1)
-			oci8cols[i].kind = tp
+			oci8cols[i].kind = C.SQLT_CHR//tp
 			oci8cols[i].size = int( lp+1)
 
 			//valueP = oci8cols[i].pbuf
