@@ -846,12 +846,12 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		if rv := C.OCIDefineByPos(
 			(*C.OCIStmt)(s.s),
-			s.defp,//&defp,
+			s.defp,
 			(*C.OCIError)(s.c.err),
 			C.ub4(i+1),
-			oci8cols[i].pbuf,        //valueP,
-			C.sb4(oci8cols[i].size), //valueSz,
-			oci8cols[i].kind,        //dty,
+			oci8cols[i].pbuf,
+			C.sb4(oci8cols[i].size),
+			oci8cols[i].kind,
 			unsafe.Pointer(&oci8cols[i].ind),
 			&oci8cols[i].rlen,
 			nil,
@@ -1038,6 +1038,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				nil,
 				0,
 				C.SQLCS_IMPLICIT)
+			fmt.Println( ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", int(*bamt) )	
 			if rv == C.OCI_NEED_DATA {
 				buf = append(buf, b[:int(*bamt)]...)
 				goto again
@@ -1045,7 +1046,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			if rv == C.OCI_ERROR {
 				return ociGetError(rc.s.c.err)
 			}
-			dest[i] = buf//b[:total+int(bamt)]
+			dest[i] = append(buf, b[:int(*bamt)]...)//buf//b[:total+int(bamt)]
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_AVC:
 			fmt.Println("SQLT_CHR")
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
