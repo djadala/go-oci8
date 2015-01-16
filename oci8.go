@@ -76,12 +76,21 @@ retString OCIAttrGetString( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
 	return vvv;
 }
 
+//////////////////////////////////////////////
+
 typedef struct {
     dvoid *ptr;
 	sword rv;
-} retParam;
-retParam OCIParamGetRet( dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
-    retParam vvv = { NULL, 0};
+} ret1ptr;
+
+typedef struct {
+    dvoid *ptr;
+    dvoid *extra; 
+	sword rv;
+} ret2ptr;
+
+ret1ptr WrapOCIParamGet( dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
+    ret1ptr vvv = { NULL, 0};
 	vvv.rv = OCIParamGet(
 			ss,
 			hType,
@@ -91,65 +100,25 @@ retParam OCIParamGetRet( dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
 	return vvv;
 }
 
-typedef struct {
-    dvoid *ptr;
-	sword rv;
-} retDAlloc;
-//allocate  + sizeof( dvoid*), for binding and defining
-//алокира дескриптор и указател към него 
-retDAlloc OCIDescriptorAllocRet( dvoid *env, ub4 type) {
-    retDAlloc vvv = { NULL, 0};
-    dvoid *des;
-    //des = malloc( sizeof( dvoid*));
+ret2ptr WrapOCIDescriptorAlloc( dvoid *env, ub4 type, size_t extra) {
+    ret2ptr vvv = { NULL, NULL, 0};
+    void *ptr;
+    if( extra == 0)  {
+       ptr = NULL;
+    } else { 
+       ptr = &vvv.extra;
+    }
 	vvv.rv = OCIDescriptorAlloc(
 				env,
-				&des,
+				&vvv.ptr,
 				type,
-				sizeof( dvoid*),
-				&vvv.ptr);
-	*(( dvoid **)vvv.ptr) = des;
-	//vvv.ptr = des;
+				extra,
+				&vvv.extra);
 	return vvv;
 }
 
-
-
-typedef struct {
-    dvoid *ptr;
-    dvoid *zone; 
-	sword rv;
-} retTimestamp;
-//алокира дескриптор, указател към него и стринг за зоната с дължина  zoneLen
-retTimestamp OCIBindTimestamp( dvoid *env, ub4 type, int zoneLen) {
-    retTimestamp vvv = { NULL, NULL, 0};
-    dvoid *des;
-    if( zoneLen < 8) zoneLen = 8; // +dd:dd\0
-	vvv.rv = OCIDescriptorAlloc(
-				env,
-				&des,
-				type,
-				sizeof( dvoid*)+zoneLen+1,
-				&vvv.ptr);
-	*(( dvoid **)vvv.ptr) = des;
-	vvv.zone = vvv.ptr+ sizeof( dvoid*);
-	return vvv;
-}
- 
- 
-
-
-
-
-
-
-typedef struct {
-    dvoid *ptr;
-    dvoid *extra; 
-	sword rv;
-} retHandle;
-//алокира handle 
-retHandle WrapOCIHandleAlloc( dvoid *parrent, ub4 type, size_t extra) {
-    retHandle vvv = { NULL, NULL, 0};
+ret2ptr WrapOCIHandleAlloc( dvoid *parrent, ub4 type, size_t extra) {
+    ret2ptr vvv = { NULL, NULL, 0};
     void *ptr;
     if( extra == 0)  {
        ptr = NULL;
@@ -164,21 +133,41 @@ retHandle WrapOCIHandleAlloc( dvoid *parrent, ub4 type, size_t extra) {
 				ptr);
 	return vvv;
 }
- 
- 
- 
-////for test, dates are return as timestamp
-//typedef struct {
-//	sb2 y;
-//	ub1 m, d, hh, mi, ss;
-//} retDate;
-//retDate getDate( OCIDate *date) {
-//    retDate d;
-//    OCIDateGetDate( date, &d.y, &d.m, &d.d);
-//    OCIDateGetTime( date, &d.hh, &d.mi, &d.ss);
-//    return d;
-//}
 
+ret2ptr WrapOCIEnvCreate( ub4 mode, size_t extra) {
+    ret2ptr vvv = { NULL, NULL, 0};
+    void *ptr;
+    if( extra == 0)  {
+       ptr = NULL;
+    } else { 
+       ptr = &vvv.extra;
+    }
+	vvv.rv = OCIEnvCreate(
+		(OCIEnv**)(&vvv.ptr),
+		mode,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		extra,
+		ptr);
+	return vvv;
+}
+
+ret1ptr WrapOCILogon( OCIEnv *env, OCIError *err, OraText *u, ub4 ulen, OraText *p, ub4 plen, OraText *h, ub4 hlen) {
+    ret1ptr vvv = { NULL, 0};
+	vvv.rv = OCILogon(
+		env,
+		err,
+		(OCISvcCtx**)(&vvv.ptr),
+		u,
+		ulen,
+		p,
+		plen,
+		h,
+		hlen); 
+	return vvv;
+}
 
 */
 import "C"
@@ -199,6 +188,8 @@ import (
 	"unsafe"
 	//"sync"
 )
+
+const blobBufSize = 4000
 
 type DSN struct {
 	Host     string
@@ -370,28 +361,14 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		conn.attrs.Set(k, v)
 	}
 
-	if rv := C.OCIEnvCreate(
-		(**C.OCIEnv)(unsafe.Pointer(&conn.env)),
+    if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
-		nil,
-		nil,
-		nil,
-		nil,
-		0,
-		nil); rv != C.OCI_SUCCESS {
+		0); rv.rv != C.OCI_SUCCESS {
 		return nil, errors.New("cant OCIEnvCreate")	
+	} else {
+		conn.env = rv.ptr
 	}
-
-    /*
-	if rv := C.OCIHandleAlloc(
-		conn.env,
-		&conn.err,
-		C.OCI_HTYPE_ERROR,
-		0,
-		nil); rv != C.OCI_SUCCESS {
-		return nil, ociGetError(conn.err)
-	}
-    */
+	
 	if rv := C.WrapOCIHandleAlloc(
 		conn.env,
 		C.OCI_HTYPE_ERROR,
@@ -400,33 +377,32 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	} else {
 		conn.err = rv.ptr
 	}
-    
-    
-    
-	var phost *C.char
+
+
+	var host string
 	if dsn.Host != "" && dsn.SID != "" {
-		phost = C.CString(fmt.Sprintf("%s:%d/%s", dsn.Host, dsn.Port, dsn.SID))
+		host = fmt.Sprintf("%s:%d/%s", dsn.Host, dsn.Port, dsn.SID)
 	} else {
-		phost = C.CString(dsn.SID)
+		host = dsn.SID
 	}
+	phost := C.CString(host)
 	defer C.free(unsafe.Pointer(phost))
-	phostlen := C.strlen(phost)
 	puser := C.CString(dsn.Username)
 	defer C.free(unsafe.Pointer(puser))
 	ppass := C.CString(dsn.Password)
 	defer C.free(unsafe.Pointer(ppass))
-
-	if rv := C.OCILogon(
+	if rv := C.WrapOCILogon(
 		(*C.OCIEnv)(conn.env),
 		(*C.OCIError)(conn.err),
-		(**C.OCISvcCtx)(unsafe.Pointer(&conn.svc)),
 		(*C.OraText)(unsafe.Pointer(puser)),
-		C.ub4(C.strlen(puser)),
+		C.ub4( len(dsn.Username)),
 		(*C.OraText)(unsafe.Pointer(ppass)),
-		C.ub4(C.strlen(ppass)),
+		C.ub4( len(dsn.Password)),
 		(*C.OraText)(unsafe.Pointer(phost)),
-		C.ub4(phostlen)); rv != C.OCI_SUCCESS {
+		C.ub4( len(host))); rv.rv != C.OCI_SUCCESS {
 		return nil, ociGetError(conn.err)
+	} else {
+		conn.svc = rv.ptr
 	}
 
 	conn.location = dsn.Location
@@ -459,23 +435,14 @@ type OCI8Stmt struct {
 	s      unsafe.Pointer
 	closed bool
 	bp  **C.OCIBind
+	defp **C.OCIDefine
 }
 
 func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 	pquery := C.CString(query)
 	defer C.free(unsafe.Pointer(pquery))
-	var s, bp unsafe.Pointer
+	var s, bp, defp unsafe.Pointer
 
-    /*
-	if rv := C.OCIHandleAlloc(
-		c.env,
-		&s,
-		C.OCI_HTYPE_STMT,
-		0,
-		nil); rv != C.OCI_SUCCESS {
-		return nil, ociGetError(c.err)
-	}
-    */
 	if rv := C.WrapOCIHandleAlloc(
 		c.env,
 		C.OCI_HTYPE_STMT,
@@ -484,6 +451,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 	} else {
 		s = rv.ptr
 		bp = rv.extra
+		defp = unsafe.Pointer(uintptr(rv.extra)+ unsafe.Sizeof(unsafe.Pointer(nil)))
 		
 	}
     
@@ -497,7 +465,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 		return nil, ociGetError(c.err)
 	}
 
-	return &OCI8Stmt{c: c, s: s, bp: (**C.OCIBind)(bp),}, nil
+	return &OCI8Stmt{c: c, s: s, bp: (**C.OCIBind)(bp), defp: (**C.OCIDefine)(defp), }, nil
 }
 
 func (s *OCI8Stmt) Close() error {
@@ -563,7 +531,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 		cdata           *C.char
 		clen            C.sb4
 	)
-	
+	*s.bp = nil
 	for i, v := range args {
 
 		switch v.(type) {
@@ -598,19 +566,26 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 			now := v.(time.Time)
 			zone, offset := now.Zone()
 
-			
-			if ret := C.OCIBindTimestamp(s.c.env, C.OCI_DTYPE_TIMESTAMP_TZ, C.int( len(zone))); ret.rv != C.OCI_SUCCESS {
+			size :=  len(zone) + 1
+			if size < 8 {
+				size = 8
+			}
+			size += int( unsafe.Sizeof(unsafe.Pointer(nil))) 
+			if ret := C.WrapOCIDescriptorAlloc( 
+				s.c.env, 
+				C.OCI_DTYPE_TIMESTAMP_TZ, 
+				C.size_t(size)); ret.rv != C.OCI_SUCCESS {
 				defer freeBoundParameters(boundParameters )
 				return nil, ociGetError(s.c.err)
 			} else {
 				dty = C.SQLT_TIMESTAMP_TZ
 				clen = C.sb4(unsafe.Sizeof(pt))
-                pt = ret.ptr
-                zp = ret.zone
+                pt = ret.extra
+                *(*unsafe.Pointer)(ret.extra) = ret.ptr
+                zp = unsafe.Pointer( uintptr(ret.extra) +  unsafe.Sizeof(unsafe.Pointer(nil)))
                 boundParameters = append(boundParameters, oci8bind{dty, pt})
 
 			}
-
 			for first := true; ; first = false {
 				copy( (*[1 << 30]byte)(zp)[0:len(zone)], zone)
 				rv := C.OCIDateTimeConstruct(
@@ -666,7 +641,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 
 		if rv := C.OCIBindByPos(
 			(*C.OCIStmt)(s.s),
-			//&bp,
 			s.bp,
 			(*C.OCIError)(s.c.err),
 			C.ub4(i+1),
@@ -683,16 +657,14 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 			return nil, ociGetError(s.c.err)
 		}
 	}
-	return boundParameters/*freeBoundParameters*/, nil
+	return boundParameters, nil
 }
 
 func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	var (
-	//	freeBoundParameters func()
 		fbp  []oci8bind
 	)
 
-	//if freeBoundParameters, err = s.bind(args); err != nil {
 	if fbp, err = s.bind(args); err != nil {
 		return nil, err
 	}
@@ -744,7 +716,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		var tp C.ub2
 		var lp C.ub2
 
-		if rp := C.OCIParamGetRet(s.s, C.OCI_HTYPE_STMT, (*C.OCIError)(s.c.err), C.ub4(i+1)); rp.rv != C.OCI_SUCCESS {
+		if rp := C.WrapOCIParamGet(s.s, C.OCI_HTYPE_STMT, (*C.OCIError)(s.c.err), C.ub4(i+1)); rp.rv != C.OCI_SUCCESS {
 			return nil, ociGetError(s.c.err)
 		} else {
 			p = rp.ptr
@@ -768,30 +740,11 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			lp = lpr.num
 		}
 		/*
-			switch tp {
-			case C.SQLT_NUM:
-				oci8cols[i].kind = C.SQLT_CHR
-			case C.SQLT_CHR, C.SQLT_AFC: // SQLT_VCS SQLT_AFC SQLT_CLOB SQLT_AVC
-				lp *= 4 //utf8 enc
-				oci8cols[i].kind = tp
-
-			case C.SQLT_DAT:
-				oci8cols[i].kind = C.SQLT_TIMESTAMP
-				tp = C.SQLT_TIMESTAMP
-
-			default:
-				fmt.Println("KIND=", int(tp), "size=", int(lp))
-				oci8cols[i].kind = tp
-			}
-			//oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(np))[0:int(ns)])
-			oci8cols[i].size = int(lp)
-		*/
 		var (
 			defp *C.OCIDefine
-			//valueP  unsafe.Pointer
-			//valueSz C.sb4
-			//dty     C.ub2
 		)
+		*/ 
+		//*s.defp = nil
 		switch tp {
 
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_VCS, C.SQLT_AVC:
@@ -815,7 +768,26 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].pbuf = C.malloc(8)
 
 		case C.SQLT_CLOB, C.SQLT_BLOB:
+		    //allocate +io buffers
+		    size := int(unsafe.Sizeof(unsafe.Pointer(nil)))
+		    if oci8cols[i].size < blobBufSize {
+				size +=blobBufSize
+			} else {
+				size +=oci8cols[i].size
+			}
+			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_LOB, C.size_t(size)); ret.rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+			} else {
 
+				oci8cols[i].kind = C.SQLT_TIMESTAMP
+				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
+				oci8cols[i].pbuf = ret.extra
+				*(*unsafe.Pointer)(ret.extra) = ret.ptr
+
+			}
+
+
+            /*
 			if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_LOB); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(s.c.err)
 			} else {
@@ -825,7 +797,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.ptr
 
 			}
-			/*
+			
 				if rv := C.OCIDescriptorAlloc(
 					s.c.env,
 					&oci8cols[i].pbuf,
@@ -846,6 +818,20 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			//			oci8cols[i].size = int(lp)
 			//			oci8cols[i].pbuf = C.malloc( C.size_t(lp) )
 			//
+			
+		case C.SQLT_TIMESTAMP, C.SQLT_DAT:
+			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_TIMESTAMP, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+			} else {
+
+				oci8cols[i].kind = C.SQLT_TIMESTAMP
+				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
+				oci8cols[i].pbuf = ret.extra
+				*(*unsafe.Pointer)(ret.extra) = ret.ptr
+			}
+			
+			
+			/*
 		case C.SQLT_TIMESTAMP, C.SQLT_DAT:
 			if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_TIMESTAMP); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(s.c.err)
@@ -856,7 +842,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.ptr
 
 			}
-			/*
+			
 				if rv := C.OCIDescriptorAlloc(
 					s.c.env,
 					&oci8cols[i].pbuf,
@@ -872,7 +858,17 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			*/
 
 		case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
+			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_TIMESTAMP_TZ, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+			} else {
 
+				oci8cols[i].kind = C.SQLT_TIMESTAMP
+				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
+				oci8cols[i].pbuf = ret.extra
+				*(*unsafe.Pointer)(ret.extra) = ret.ptr
+			}
+
+            /*
 			if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_TIMESTAMP_TZ); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(s.c.err)
 			} else {
@@ -882,7 +878,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.ptr
 
 			}
-			/*
+			
 				if rv := C.OCIDescriptorAlloc(
 					s.c.env,
 					&oci8cols[i].pbuf,
@@ -896,6 +892,16 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				dty = C.SQLT_TIMESTAMP_TZ
 			*/
 		case C.SQLT_INTERVAL_DS:
+			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_INTERVAL_DS, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+			} else {
+
+				oci8cols[i].kind = C.SQLT_TIMESTAMP
+				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
+				oci8cols[i].pbuf = ret.extra
+				*(*unsafe.Pointer)(ret.extra) = ret.ptr
+			}
+		    /*
 			if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_INTERVAL_DS); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(s.c.err)
 			} else {
@@ -905,7 +911,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.ptr
 
 			}
-			/*
+			
 				if rv := C.OCIDescriptorAlloc(
 					s.c.env,
 					&oci8cols[i].pbuf,
@@ -921,6 +927,16 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			*/
 
 		case C.SQLT_INTERVAL_YM:
+			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_INTERVAL_YM, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+			} else {
+
+				oci8cols[i].kind = C.SQLT_TIMESTAMP
+				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
+				oci8cols[i].pbuf = ret.extra
+				*(*unsafe.Pointer)(ret.extra) = ret.ptr
+			}
+		/*
 			if ret := C.OCIDescriptorAllocRet(s.c.env, C.OCI_DTYPE_INTERVAL_YM); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(s.c.err)
 			} else {
@@ -930,7 +946,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.ptr
 
 			}
-		/*
+		
 			if rv := C.OCIDescriptorAlloc(
 				s.c.env,
 				&oci8cols[i].pbuf,
@@ -957,7 +973,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		if rv := C.OCIDefineByPos(
 			(*C.OCIStmt)(s.s),
-			&defp,
+			s.defp,//&defp,
 			(*C.OCIError)(s.c.err),
 			C.ub4(i+1),
 			oci8cols[i].pbuf,        //valueP,
@@ -995,7 +1011,6 @@ func (r *OCI8Result) RowsAffected() (int64, error) {
 
 func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 	var (
-		//freeBoundParameters func()
 		fbp []oci8bind
 	)
 
@@ -1260,7 +1275,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			rv = C.OCIDateTimeGetDate(
 				rc.s.c.env,
 				(*C.OCIError)(rc.s.c.err),
-				(*C.OCIDateTime)(rc.cols[i].pbuf),
+				*(**C.OCIDateTime)(rc.cols[i].pbuf),
 				&y,
 				&m,
 				&d,
