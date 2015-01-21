@@ -621,18 +621,42 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 
 		case string:
 			v := v.(string)
-			dty = C.SQLT_STR
+			dty = C.SQLT_AFC   //dont trim strings !!!
 			cdata = C.CString(v)
-			clen = C.sb4(len(v) + 1)
+			clen = C.sb4(len(v) )
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
-			//		case int64:
-			//		case bool:
-			//fallthrough
+		case int64:
+            val := v.(int64)
+			dty = C.SQLT_INT
+			clen = C.sb4(8)    //not tested on i386. may only work on amd64
+			cdata = (*C.char)(C.malloc(8))
+            buf := (*[1 << 30]byte)( unsafe.Pointer(cdata))[ 0:8]
+			buf[0]=  byte(val & 0x0ff)
+			buf[1]=  byte(val >>8 & 0x0ff)
+			buf[2]=  byte(val >>16 & 0x0ff)
+			buf[3]=  byte(val >>24 & 0x0ff)
+			buf[4]=  byte(val >>32 & 0x0ff)
+			buf[5]=  byte(val >>40 & 0x0ff)
+			buf[6]=  byte(val >>48 & 0x0ff)
+			buf[7]=  byte(val >>56 & 0x0ff)
+			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+		
+		case bool:  //oracle dont have bool, handle as 0/1
+			dty = C.SQLT_INT
+			clen = C.sb4(1)
+			cdata = (*C.char)(C.malloc(10))
+            if v.(bool)  {
+				*cdata = 1
+			} else {
+				*cdata = 0
+			}
+			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			 
 		default:
 			//fmt.Printf( "%T\n", v)
-			dty = C.SQLT_STR
+			dty = C.SQLT_CHR
 			d := fmt.Sprintf("%v", v)
-			clen = C.sb4(len(d) + 1) // + terminating 00  ??????????
+			clen = C.sb4(len(d)) 
 			cdata = C.CString(d)
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		}
@@ -1038,7 +1062,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				nil,
 				0,
 				C.SQLCS_IMPLICIT)
-			fmt.Println( ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", int(*bamt) )	
 			if rv == C.OCI_NEED_DATA {
 				buf = append(buf, b[:int(*bamt)]...)
 				goto again
@@ -1048,7 +1071,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			}
 			dest[i] = append(buf, b[:int(*bamt)]...)//buf//b[:total+int(bamt)]
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_AVC:
-			fmt.Println("SQLT_CHR")
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
 			switch {
 			case rc.cols[i].ind == 0: //Normal
@@ -1060,23 +1082,19 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
 
-		case C.SQLT_LVB: // LONG VARRAW
-			fmt.Println("LONG VARRAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-			dest[i] = nil
+		//case C.SQLT_LVB: // LONG VARRAW
+		//	fmt.Println("LONG VARRAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+		//	dest[i] = nil
 		case C.SQLT_BIN: // RAW
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
-			fmt.Println("RAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+			//fmt.Println("RAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			dest[i] = buf
 		case C.SQLT_LNG: // LONG
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
-			fmt.Println("LONG  column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
+			//fmt.Println("LONG  column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			dest[i] = buf
 
-		case C.SQLT_IBFLOAT:
-			fmt.Print("SQLT_IBFLOAT")
-			fallthrough
-		case C.SQLT_IBDOUBLE:
-			fmt.Println("SQLT_IBDOUBLE")
+		case C.SQLT_IBDOUBLE, C.SQLT_IBFLOAT:
 			colsize := rc.cols[i].size
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:colsize]
 			if colsize == 4 {
@@ -1117,17 +1135,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				return errors.New(fmt.Sprintf("Unhandled binary float size: %d", colsize))
 			}
 		case C.SQLT_TIMESTAMP:
-			fmt.Println("SQLT_TIMESTAMP")
-			fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-			/*
-				        var uu C.ub4
-				        fmt.Printf( "%p, %v\n", rc.cols[i].pbuf, C.OCIDateTimeCheck(
-								rc.s.c.env,
-								(*C.OCIError)(rc.s.c.err),
-								(*C.OCIDateTime)(rc.cols[i].pbuf),
-								&uu,
-				        ))
-			*/
 			var (
 				y                C.sb2
 				m, d, hh, mm, ss C.ub1
@@ -1168,8 +1175,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				rc.s.c.location)
 
 		case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
-			fmt.Println("SQLT_TIMESTAMP_TZ")
-			fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			var (
 				y                C.sb2
 				m, d, hh, mm, ss C.ub1
@@ -1215,7 +1220,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			}
 			//zone[zlen]=0
 			nnn := C.GoStringN((*C.char)((unsafe.Pointer)(&zone[0])), C.int(zlen))
-			fmt.Println(nnn)
 
 			loc, err := time.LoadLocation(nnn)
 			if err != nil {
@@ -1235,7 +1239,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 					return ociGetError(rc.s.c.err)
 				}
 				//TODO reuse locations
-				fmt.Println(nnn, int(h)*60*60+int(m)*60)
+				//fmt.Println(nnn, int(h)*60*60+int(m)*60)
 				loc = time.FixedZone(nnn, int(h)*60*60+int(m)*60)
 
 			}
@@ -1255,8 +1259,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			// dest[i] = nil
 
 		case C.SQLT_INTERVAL_DS:
-			fmt.Println("SQLT_INTERVAL_DS")
-			fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
 			var (
 				d, hh, mm, ss, ff C.sb4
@@ -1278,8 +1280,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			dest[i] = time.Duration(d)*time.Hour*24 + time.Duration(hh)*time.Hour + time.Duration(mm)*time.Minute + time.Duration(ss)*time.Second + time.Duration(ff)
 
 		case C.SQLT_INTERVAL_YM:
-			fmt.Println("SQLT_INTERVAL_YM")
-			fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
 
 			var (

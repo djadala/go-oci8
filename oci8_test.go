@@ -27,7 +27,7 @@ func TestParseDSN(t *testing.T) {
 		actualDSN, err := ParseDSN(tt.dsnString)
 
 		if err != nil {
-			t.Errorf("ParseDSN(%) got error: %+v", tt.dsnString, err)
+			t.Errorf("ParseDSN(%s) got error: %+v", tt.dsnString, err)
 		}
 
 		if !reflect.DeepEqual(actualDSN, tt.expectedDSN) {
