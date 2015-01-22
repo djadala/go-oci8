@@ -169,6 +169,110 @@ ret1ptr WrapOCILogon( OCIEnv *env, OCIError *err, OraText *u, ub4 ulen, OraText 
 	return vvv;
 }
 
+////////////////////////////////////////////
+
+typedef struct {
+    ub4 ff;
+    ub2 y;
+    ub1 m, d, hh, mm, ss; 
+	sword rv;
+} retTime;
+retTime WrapOCIDateTimeGetDateTime(  OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
+	retTime vvv;
+
+	vvv.rv = OCIDateTimeGetDate(
+				env,
+				err,
+				tptr,
+				&vvv.y,
+				&vvv.m,
+				&vvv.d
+			);
+	if( vvv.rv != OCI_SUCCESS) {
+		return vvv;
+	}
+	vvv.rv = OCIDateTimeGetTime(
+				env,
+				err,
+				tptr,
+				&vvv.hh,
+				&vvv.mm,
+				&vvv.ss,
+				&vvv.ff
+			);
+	return vvv;
+}
+
+
+
+typedef struct {
+    sb1 h, m;
+    ub1 zone[90]; // = max timezone name len
+    ub4 zlen;
+	sword rv;
+} retZone;
+retZone WrapOCIDateTimeGetTimeZoneNameOffset( OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
+	retZone vvv;
+	vvv.zlen = sizeof(vvv.zone);
+
+	vvv.rv = OCIDateTimeGetTimeZoneName(
+				env,
+				err,
+				tptr,
+				vvv.zone,
+				&vvv.zlen
+			);
+	if( vvv.rv != OCI_SUCCESS) {
+		return vvv;
+	}
+	vvv.rv = OCIDateTimeGetTimeZoneOffset(
+		env,
+		err,
+		tptr,
+		&vvv.h,
+		&vvv.m
+	);
+	return vvv;
+}
+
+
+////////////////////////////////////////////
+
+typedef struct {
+    sb4 d, hh, mm, ss, ff;
+	sword rv;
+} retIntervalDS;
+retIntervalDS WrapOCIIntervalGetDaySecond( OCIEnv *env, OCIError *err, OCIInterval *ptr) {
+    retIntervalDS vvv;
+	vvv.rv = OCIIntervalGetDaySecond(
+		env,
+		err,
+		&vvv.d,
+		&vvv.hh,
+		&vvv.mm,
+		&vvv.ss,
+		&vvv.ff,
+		ptr);
+	return vvv;
+}
+
+
+typedef struct {
+    sb4 y, m;
+	sword rv;
+} retIntervalYM;
+retIntervalYM WrapOCIIntervalGetYearMonth( OCIEnv *env, OCIError *err, OCIInterval *ptr) {
+    retIntervalYM vvv;
+	vvv.rv = OCIIntervalGetYearMonth(
+		env,
+		err,
+		&vvv.y,
+		&vvv.m,
+		ptr);
+	return vvv;
+}
+
+
 */
 import "C"
 import (
@@ -564,7 +668,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 			now := v.(time.Time)
 			zone, offset := now.Zone()
 
-			size :=  len(zone) + 1
+			size := len(zone) 
 			if size < 8 {
 				size = 8
 			}
@@ -589,7 +693,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 				rv := C.OCIDateTimeConstruct(
 					s.c.env,
 					(*C.OCIError)(s.c.err),
-					(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)), //(*C.OCIDateTime)(pt),
+					(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
 					C.sb2(now.Year()),
 					C.ub1(now.Month()),
 					C.ub1(now.Day()),
@@ -598,7 +702,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 					C.ub1(now.Second()),
 					C.ub4(now.Nanosecond()),
 					(*C.OraText)(zp),
-					C.size_t(len(zone)), //C.strlen( zp),//C.size_t(len(zone)),
+					C.size_t(len(zone)),
 				)
 				if rv != C.OCI_SUCCESS {
 					if !first {
@@ -611,6 +715,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ( boundParameters []oci8bind, err e
 						sign = '-'
 					}
 					offset /= 60
+					//oracle accept zones "[+-]hh:mm", try second time
 					zone = fmt.Sprintf("%c%02d:%02d", sign, offset/60, offset%60)
 				} else {
 					break
@@ -1134,125 +1239,62 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			} else {
 				return errors.New(fmt.Sprintf("Unhandled binary float size: %d", colsize))
 			}
+			
 		case C.SQLT_TIMESTAMP:
-			var (
-				y                C.sb2
-				m, d, hh, mm, ss C.ub1
-				ff               C.ub4
-			)
-			rv = C.OCIDateTimeGetDate(
-				rc.s.c.env,
+		if rv:=C.WrapOCIDateTimeGetDateTime(
+				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
 				*(**C.OCIDateTime)(rc.cols[i].pbuf),
-				&y,
-				&m,
-				&d,
-			)
-			if rv == C.OCI_ERROR {
-				return ociGetError(rc.s.c.err)
-			}
-			rv = C.OCIDateTimeGetTime(
-				rc.s.c.env,
-				(*C.OCIError)(rc.s.c.err),
-				(*C.OCIDateTime)(rc.cols[i].pbuf),
-				&hh,
-				&mm,
-				&ss,
-				&ff,
-			)
-			if rv == C.OCI_ERROR {
-				return ociGetError(rc.s.c.err)
-			}
-
+				); rv.rv != C.OCI_SUCCESS {
+			return ociGetError(rc.s.c.err)
+		} else {
 			dest[i] = time.Date(
-				int(y),
-				time.Month(m),
-				int(d),
-				int(hh), //-1,
-				int(mm), //-1
-				int(ss), //int(buf[6])-1,
-				int(ff),
+				int(rv.y),
+				time.Month(rv.m),
+				int(rv.d),
+				int(rv.hh),
+				int(rv.mm),
+				int(rv.ss),
+				int(rv.ff),
 				rc.s.c.location)
-
+		}
+		
 		case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
-			var (
-				y                C.sb2
-				m, d, hh, mm, ss C.ub1
-				ff               C.ub4
-				zone             [512]C.ub1
-				zlen             C.ub4
-			)
 			tptr := *(**C.OCIDateTime)(rc.cols[i].pbuf)
-			zlen = 512
-			rv = C.OCIDateTimeGetDate(
-				rc.s.c.env,
-				(*C.OCIError)(rc.s.c.err),
-				tptr, //(*C.OCIDateTime)(rc.cols[i].pbuf),
-				&y,
-				&m,
-				&d,
-			)
-			if rv == C.OCI_ERROR {
+			rv:=C.WrapOCIDateTimeGetDateTime(
+					(*C.OCIEnv)(rc.s.c.env),
+					(*C.OCIError)(rc.s.c.err),
+					tptr)
+			if rv.rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
-			rv = C.OCIDateTimeGetTime(
-				rc.s.c.env,
-				(*C.OCIError)(rc.s.c.err),
-				tptr, //(*C.OCIDateTime)(rc.cols[i].pbuf),
-				&hh,
-				&mm,
-				&ss,
-				&ff,
-			)
-			if rv == C.OCI_ERROR {
+			rvz := C.WrapOCIDateTimeGetTimeZoneNameOffset(
+					(*C.OCIEnv)(rc.s.c.env),
+					(*C.OCIError)(rc.s.c.err),
+					tptr)
+			if rvz.rv != C.OCI_SUCCESS {
+				//fmt.Println(ociGetError(rc.s.c.err))
 				return ociGetError(rc.s.c.err)
 			}
-
-			rv = C.OCIDateTimeGetTimeZoneName(
-				rc.s.c.env,
-				(*C.OCIError)(rc.s.c.err),
-				tptr, //(*C.OCIDateTime)(rc.cols[i].pbuf),
-				&zone[0],
-				&zlen,
-			)
-			if rv == C.OCI_ERROR {
-				return ociGetError(rc.s.c.err)
-			}
-			//zone[zlen]=0
-			nnn := C.GoStringN((*C.char)((unsafe.Pointer)(&zone[0])), C.int(zlen))
-
+            
+            nnn := C.GoStringN((*C.char)((unsafe.Pointer)(&rvz.zone[0])), C.int(rvz.zlen))
 			loc, err := time.LoadLocation(nnn)
 			if err != nil {
-
-				var (
-					h, m C.sb1
-				)
-
-				rv = C.OCIDateTimeGetTimeZoneOffset(
-					rc.s.c.env,
-					(*C.OCIError)(rc.s.c.err),
-					(*C.OCIDateTime)(rc.cols[i].pbuf),
-					&h,
-					&m,
-				)
-				if rv == C.OCI_ERROR {
-					return ociGetError(rc.s.c.err)
-				}
 				//TODO reuse locations
-				//fmt.Println(nnn, int(h)*60*60+int(m)*60)
-				loc = time.FixedZone(nnn, int(h)*60*60+int(m)*60)
-
+				loc = time.FixedZone(nnn, int(rvz.h)*60*60+int(rvz.m)*60)
 			}
+			
 			dest[i] = time.Date(
-				int(y),
-				time.Month(m),
-				int(d),
-				int(hh), //-1,
-				int(mm), //-1
-				int(ss), //int(buf[6])-1,
-				int(ff),
+				int(rv.y),
+				time.Month(rv.m),
+				int(rv.d),
+				int(rv.hh),
+				int(rv.mm),
+				int(rv.ss),
+				int(rv.ff),
 				loc)
-
+					
+               
 			// case C.SQLT_TIMESTAMP_LTZ:
 			// fmt.Println("SQLT_TIMESTAMP_LTZ")
 			// fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
@@ -1260,43 +1302,30 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 
 		case C.SQLT_INTERVAL_DS:
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
-			var (
-				d, hh, mm, ss, ff C.sb4
-			)
-			rv = C.OCIIntervalGetDaySecond(
-				rc.s.c.env,
+			rv := C.WrapOCIIntervalGetDaySecond(
+				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
-				&d,
-				&hh,
-				&mm,
-				&ss,
-				&ff,
 				iptr, //(*C.OCIInterval)(rc.cols[i].pbuf),
 			)
-			if rv != C.OCI_SUCCESS {
+			if rv.rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
 
-			dest[i] = time.Duration(d)*time.Hour*24 + time.Duration(hh)*time.Hour + time.Duration(mm)*time.Minute + time.Duration(ss)*time.Second + time.Duration(ff)
+			dest[i] = time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff)
 
 		case C.SQLT_INTERVAL_YM:
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
 
-			var (
-				y, m C.sb4
-			)
-			rv = C.OCIIntervalGetYearMonth(
-				rc.s.c.env,
+			rv := C.WrapOCIIntervalGetYearMonth(
+				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
-				&y,
-				&m,
 				iptr, //(*C.OCIInterval)(rc.cols[i].pbuf),
 			)
-			if rv != C.OCI_SUCCESS {
+			if rv.rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
 
-			dest[i] = int64(y)*12 + int64(m)
+			dest[i] = int64(rv.y)*12 + int64(rv.m)
 
 		default:
 			return errors.New(fmt.Sprintf("Unhandled column type: %d", rc.cols[i].kind))
