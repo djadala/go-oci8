@@ -173,7 +173,7 @@ ret1ptr WrapOCILogon( OCIEnv *env, OCIError *err, OraText *u, ub4 ulen, OraText 
 
 typedef struct {
     ub4 ff;
-    ub2 y;
+    sb2 y;
     ub1 m, d, hh, mm, ss; 
 	sword rv;
 } retTime;
