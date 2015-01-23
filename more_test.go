@@ -227,6 +227,16 @@ func TestBytes1(t *testing.T) {
 	}
 }
 
+func TestBytes2(t *testing.T) {
+	
+	fmt.Println("test bytes2:")
+	n := []byte{7}
+	r := sqlstest( t, "select :0 as bytes from dual", n)
+	if !bytes.Equal(n, r["BYTES"].([]byte) ) {
+		t.Fatal( r["BYTES"],"!=", n)
+	}
+}
+
 func TestString1(t *testing.T) {
 	
 	fmt.Println("test string1:")
@@ -237,5 +247,25 @@ func TestString1(t *testing.T) {
 	}
 }
 
+func TestString2(t *testing.T) {
+	
+	fmt.Println("test string2:")
+	n := "6"
+	r := sqlstest( t, "select :0 as str from dual", n)
+	if n != r["STR"].(string)  {
+		t.Fatal( r["STR"],"!=", n)
+	}
+}
 
+func TestString3(t *testing.T) {
+	
+	fmt.Println("test string3:")
+	//n := "こんにちは 世界 Καλημέρα κόσμε こんにちは안녕하세요góðan dagGrüßgotthyvää päivääyá'át'ééhΓεια σαςВiтаюგამარჯობაनमस्ते你好здравейсвят"
+	//database must support utf8 charset !!!!! 
+	n := "здравейсвят"
+	r := sqlstest( t, "select :0 as str from dual", n)
+	if n != r["STR"].(string)  {
+		t.Fatal( r["STR"],"!=", n)
+	}
+}
 
