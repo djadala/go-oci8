@@ -28,11 +28,74 @@ func init() {
 	if err != nil {
 		panic( err)
 	}
-	err = db.Ping()
+	
+	r, err := db.Exec("truncate table foo")
 	if err != nil {
+		fmt.Println(r)
 		panic( err)
 	}
+ 
+	 
 }
+
+
+func Test1(t *testing.T) {
+
+	r, err := db.Exec("truncate table foo")
+	if err != nil {
+		t.Fatal( err)
+	}
+	fmt.Println( "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", r)
+}
+
+
+
+var sql1 string = `create table foo(
+	c1 varchar2(256),
+	c2 nvarchar2(256),
+	c3 number,
+	c4 float,
+	c6 date,
+	c7 BINARY_FLOAT,
+	c8 BINARY_DOUBLE,
+	c9 TIMESTAMP,
+	c10 TIMESTAMP WITH TIME ZONE,
+	c11 TIMESTAMP WITH LOCAL TIME ZONE,
+	c12 INTERVAL YEAR TO MONTH,
+	c13 INTERVAL DAY TO SECOND,
+	c14 RAW(80),
+	c17 CHAR(15),
+	c18 NCHAR(20),
+	c19 CLOB,
+	c20 NCLOB,
+	c21 BLOB,
+	cend varchar2(12)
+	)`
+
+var sql12 string = `insert( c1,c2,c3,c4,c6,c7,c8,c9,c10,c11,c12,c13,c14,c17,c18,c19,c20,c21,cend) into foo values( 
+:1,
+:2,
+:3,
+:4,
+:6, 
+:7,
+:8,
+:9, 
+:10, 
+:11, 
+NUMTOYMINTERVAL( :12, 'MONTH'),
+NUMTODSINTERVAL( :13 / 1000000000, 'SECOND'),
+:14,
+:17, 
+:18,
+:19, 
+:20,
+:21,
+'END'
+)`
+
+
+
 
 func sqlstest(t *testing.T, sql string, p ...interface{} ) map[string]interface{} {
 	
@@ -112,6 +175,9 @@ func TestInterval1(t *testing.T) {
 	}
 }
 
+
+
+
 func TestInterval2(t *testing.T) {
 	
 	fmt.Println("test interval2:")
@@ -131,6 +197,8 @@ func TestInterval3(t *testing.T) {
 		t.Fatal( r,"!=", n)
 	}
 }
+
+
 
 func TestInterval4(t *testing.T) {
 	
@@ -268,4 +336,7 @@ func TestString3(t *testing.T) {
 		t.Fatal( r["STR"],"!=", n)
 	}
 }
+
+
+
 

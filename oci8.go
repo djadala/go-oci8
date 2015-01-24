@@ -424,7 +424,7 @@ func (tx *OCI8Tx) Rollback() error {
 	return nil
 }
 
-func (c *OCI8Conn) exec(cmd string) error {
+func (c *OCI8Conn) exec(cmd string) error { //Exec ???????????
 	stmt, err := c.Prepare(cmd)
 	if err == nil {
 		defer stmt.Close()
@@ -550,7 +550,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 	if rv := C.WrapOCIHandleAlloc(
 		c.env,
 		C.OCI_HTYPE_STMT,
-		(C.size_t)(unsafe.Sizeof(bp))); rv.rv != C.OCI_SUCCESS {
+		(C.size_t)(unsafe.Sizeof(bp)*2)); rv.rv != C.OCI_SUCCESS {
 		return nil, ociGetError(c.err)
 	} else {
 		s = rv.ptr
