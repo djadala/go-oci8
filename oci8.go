@@ -302,6 +302,8 @@ type DSN struct {
 	Password string
 	SID      string
 	Location *time.Location
+	transactionMode C.ub4
+	
 }
 
 func init() {
@@ -317,6 +319,7 @@ type OCI8Conn struct {
 	err           unsafe.Pointer
 	attrs         Values
 	location      *time.Location
+	transactionMode C.ub4
 	inTransaction bool
 }
 
@@ -339,9 +342,11 @@ func (vs Values) Get(k string) (v interface{}) {
 //It expects to receive a string in the form:
 //user:password@host:port/sid?param1=value1&param2=value2
 //
-//Currently the only parameter supported is 'loc' which
+//Currently the parameters supported is:
+//1 'loc' which
 //sets the timezone to read times in as and to marshal to when writing times to
-//Oracle
+//Oracle,
+//2 'isolation' =READONLY,SERIALIZABLE,DEFAULT 
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
 	rs := []byte(dsnString)
 break_loop:
@@ -393,9 +398,23 @@ break_loop:
 	dsn.SID = strings.Trim(u.Path, "/")
 
 	for k, v := range u.Query() {
-		if k == "loc" && len(v) > 0 {
-			if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
-				return nil, fmt.Errorf("Invalid DSN: %v", err)
+		switch k { 
+		case "loc": 
+			if len(v) > 0 {
+				if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
+					return nil, fmt.Errorf("Invalid DSN: %v", err)
+				}
+			}
+		case "isolation":
+			switch v[0] {
+			case "READONLY":
+				dsn.transactionMode = C.OCI_TRANS_READONLY
+			case "SERIALIZABLE":
+			    dsn.transactionMode = C.OCI_TRANS_SERIALIZABLE
+			case "DEFAULT":    
+				dsn.transactionMode = C.OCI_TRANS_READWRITE
+            default:
+				log.Println( "unknow isolation_level", v[0] )
 			}
 		}
 	}
@@ -423,8 +442,8 @@ func (tx *OCI8Tx) Rollback() error {
 	}
 	return nil
 }
-
-func (c *OCI8Conn) exec(cmd string) error { //Exec ???????????
+/*
+func (c *OCI8Conn) exec(cmd string) error { //Exec(query string, args []Value) (Result, error) ???????????
 	stmt, err := c.Prepare(cmd)
 	if err == nil {
 		defer stmt.Close()
@@ -432,15 +451,37 @@ func (c *OCI8Conn) exec(cmd string) error { //Exec ???????????
 	}
 	return err
 }
-
+*/
 func (c *OCI8Conn) Begin() (driver.Tx, error) {
-	if rv := C.OCITransStart(
-		(*C.OCISvcCtx)(c.svc),
-		(*C.OCIError)(c.err),
-		60,
-		C.OCI_TRANS_READWRITE); //C.OCI_TRANS_NEW
-	rv != C.OCI_SUCCESS {
-		return nil, ociGetError(c.err)
+	if c.transactionMode != C.OCI_TRANS_READWRITE {
+		var th unsafe.Pointer
+		if rv := C.WrapOCIHandleAlloc(
+			c.env,
+			C.OCI_HTYPE_TRANS,
+			0); rv.rv != C.OCI_SUCCESS {
+			return nil, errors.New("cant  allocate  handle")
+		} else {
+			th = rv.ptr
+		}
+		if rv :=C.OCIAttrSet(
+			c.svc, 
+			C.OCI_HTYPE_SVCCTX, 
+			th,
+			0,
+			C.OCI_ATTR_TRANS,
+			(*C.OCIError)(c.err)); 
+		rv != C.OCI_SUCCESS {
+			return nil, ociGetError(c.err)
+		}
+		
+		if rv := C.OCITransStart(
+			(*C.OCISvcCtx)(c.svc),
+			(*C.OCIError)(c.err),
+			0,
+			c.transactionMode);// C.OCI_TRANS_SERIALIZABLE C.OCI_TRANS_READWRITE C.OCI_TRANS_READONLY
+		rv != C.OCI_SUCCESS {
+			return nil, ociGetError(c.err)
+		}
 	}
 	c.inTransaction = true
 	return &OCI8Tx{c}, nil
@@ -508,9 +549,8 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	} else {
 		conn.svc = rv.ptr
 	}
-
 	conn.location = dsn.Location
-
+    conn.transactionMode = dsn.transactionMode 
 	return &conn, nil
 }
 
@@ -520,6 +560,7 @@ func (c *OCI8Conn) Close() error {
 		(*C.OCISvcCtx)(c.svc),
 		(*C.OCIError)(c.err)); rv != C.OCI_SUCCESS {
 		err = ociGetError(c.err)
+		log.Println( err)
 	} else {
 		err = nil
 	}
@@ -966,8 +1007,15 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				oci8cols[i].pbuf = ret.extra
 				*(*unsafe.Pointer)(ret.extra) = ret.ptr
 			}
+			
+		case C.SQLT_RDD: //rowid
+		    lp = 40
+			oci8cols[i].pbuf = C.malloc(C.size_t(lp) + 1)
+			oci8cols[i].kind = C.SQLT_CHR //tp
+			oci8cols[i].size = int(lp + 1)
+			 
 		default:
-			log.Println("handling type", tp, "as string") //unknown typecode
+			log.Println("handling type", tp, "size=", lp, "as string") //unknown typecode
 			oci8cols[i].pbuf = C.malloc(C.size_t(lp) + 1)
 			oci8cols[i].kind = C.SQLT_CHR //tp
 			oci8cols[i].size = int(lp + 1)
@@ -991,24 +1039,55 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	return &OCI8Rows{s, oci8cols, false}, nil
 }
 
+/*
+
+// OCI_ATTR_ROWID must be get in handle -> alloc
+// can be coverted to char, but not to int64
+
+func (s *OCI8Stmt)  lastInsertId() (int64, error) {
+	retUb4 := C.OCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
+	if retUb4.rv != C.OCI_SUCCESS {
+		return 0, ociGetError(s.c.err)
+	}
+	return int64(retUb4.num), nil
+}
+*/
+func (s *OCI8Stmt)  rowsAffected() (int64, error) {
+	retUb4 := C.OCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
+	if retUb4.rv != C.OCI_SUCCESS {
+		return 0, ociGetError(s.c.err)
+	}
+	return int64(retUb4.num), nil
+}
+
+
 type OCI8Result struct {
-	s *OCI8Stmt
+	//s *OCI8Stmt
+	n int64
+	errn error
 }
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
+	/*
 	retUb4 := C.OCIAttrGetUb4(r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(r.s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(r.s.c.err)
 	}
 	return int64(retUb4.num), nil
+	*/
+//	return r.id, r.errid 
+	return 0, errors.New("no LastInsertId available")
 }
 
 func (r *OCI8Result) RowsAffected() (int64, error) {
+	/*
 	retUb4 := C.OCIAttrGetUb4(r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(r.s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(r.s.c.err)
 	}
 	return int64(retUb4.num), nil
+	*/ 
+	return r.n, r.errn
 }
 
 func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
@@ -1039,7 +1118,10 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 	if rv != C.OCI_SUCCESS {
 		return nil, ociGetError(s.c.err)
 	}
-	return &OCI8Result{s}, nil
+	//return &OCI8Result{s}, nil
+	n, en := s.rowsAffected()
+	//id, ei := s.lastInsertId()
+	return &OCI8Result{ n: n, errn: en}, nil
 }
 
 type oci8col struct {
@@ -1105,14 +1187,8 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		1,
 		C.OCI_FETCH_NEXT,
 		C.OCI_DEFAULT)
-/*
-	if rv == C.OCI_ERROR {
-		err := ociGetError(rc.s.c.err)
-		if err.Error()[:9] != "ORA-01405" {
-			return err
-		}
-	}
-*/
+		
+		
 	if rv == C.OCI_NO_DATA {
 		return io.EOF
 	//} else if rv == C.OCI_SUCCESS_WITH_INFO {
@@ -1171,10 +1247,15 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				buf = append(buf, b[:int(*bamt)]...)
 				goto again
 			}
-			if rv == C.OCI_ERROR {
+			if rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
-			dest[i] = append(buf, b[:int(*bamt)]...)//buf//b[:total+int(bamt)]
+			//dest[i] = append(buf, b[:int(*bamt)]...)//buf//b[:total+int(bamt)]
+			if rc.cols[i].kind == C.SQLT_BLOB {
+				dest[i] = append(buf, b[:int(*bamt)]...)
+			} else {
+				dest[i] = string( append(buf, b[:int(*bamt)]...))
+			}
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_AVC:
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
 			switch {
@@ -1362,6 +1443,7 @@ func parseEnviron(env []string) (out map[string]interface{}) {
 			out["prefetch_rows"], _ = strconv.Atoi(parts[1])
 		case "PREFETCH_MEMORY":
 			out["prefetch_memory"], _ = strconv.ParseInt(parts[1], 10, 64)
+
 		}
 	}
 	return out
