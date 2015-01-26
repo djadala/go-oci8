@@ -49,6 +49,17 @@ func init() {
 	 
 }
 
+
+
+func TestTruncate(t *testing.T) {
+	
+	_, err := db.Exec("truncate table foo")
+	if err != nil {
+		panic( err)
+	}
+}
+
+
 var sql1 string = `create table foo(
 	c1 varchar2(256),
 	c2 nvarchar2(256),
@@ -67,7 +78,6 @@ var sql1 string = `create table foo(
 	c17 CHAR(15),
 	c18 NCHAR(20),
 	c19 CLOB,
-	c20 NCLOB,
 	c21 BLOB,
 	cend varchar2(12)
 	)`
@@ -89,7 +99,6 @@ NUMTODSINTERVAL( :13 / 1000000000, 'SECOND'),
 :17, 
 :18,
 :19, 
-:20,
 :21,
 'END'
 )`
@@ -460,5 +469,141 @@ func TestSmallClob(t *testing.T) {
 		t.Fatal( r["C19"],"!=", n)
 	}
 }
+
+
+//watch mem in top :)
+func zzTestMem(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+
+	
+	for now := time.Now().Add( time.Minute*5);  now.After( time.Now()); {
+		TestTruncate( t)
+		TestSelect1(t)
+		TestInterval1(t)
+		TestInterval2(t)
+		TestInterval3(t)
+		TestInterval4(t)
+		TestIntervals5(t)
+		TestTime1(t)
+		TestTime2(t)
+		TestTime3(t)
+		TestBytes1(t)
+		TestBytes2(t)
+		TestString1(t)
+		TestString2(t)
+		TestString3(t)
+		TestFooLargeBlob(t)
+		TestSmallBlob(t)
+		TestFooRowid(t)
+		TestTransaction1(t)
+		TestBigClob(t)
+		TestSmallClob(t)
+	}
+}
+	
+
+
+func TestNvarchar(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	
+	n := "Zкирddd"
+	id := "idNvarchar"
+    db.Exec("insert into foo( c2, cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select c2 from foo where cend= :1", id)
+	if n != r["C2"].(string)  {
+		t.Fatal( r["C2"],"!=", n)
+	}
+}
+
+func TestNumber1(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C3"
+	n := "123456.55"
+	id := "idNumc3"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if n != r[f].(string)  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+func TestNumber2(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C3"
+	n := 991236.5
+	id := "idNum2c3"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if "991236.5" != r[f].(string)  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+	 
+func TestFloat1(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C4"
+	n := 991236.5
+	id := "idFc4"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if "991236.5" != r[f].(string)  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+func TestBinFloat1(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C7"
+	n := 1.5
+	id := "idbFc7"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if n != r[f].(float64)  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+
+func TestBinFloat2(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C8"
+	n := 9971236.757
+	id := "idbdFc8"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if n != r[f].(float64)  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+
+
+
+
+
+
+
+
 
 
