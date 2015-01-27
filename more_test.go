@@ -599,6 +599,36 @@ func TestBinFloat2(t *testing.T) {
 
 
 
+func TestNchar(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C18"
+	n := "XXкирda"
+	id := "idbdNC18"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if strings.TrimRight( n, " ") != strings.TrimRight( r[f].(string) , " ")  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
+func TestChar(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C17"
+	n := "XXкирda"
+	id := "idbdC17"
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	if strings.TrimRight( n, " ") != strings.TrimRight( r[f].(string) , " ")  {
+		t.Fatal( r[f],"!=", n)
+	}
+}
+
 
 
 
