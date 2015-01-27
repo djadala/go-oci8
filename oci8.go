@@ -1268,9 +1268,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
 
-		//case C.SQLT_LVB: // LONG VARRAW
-		//	fmt.Println("LONG VARRAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-		//	dest[i] = nil
 		case C.SQLT_BIN: // RAW
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
 			//fmt.Println("RAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
@@ -1392,8 +1389,8 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				return ociGetError(rc.s.c.err)
 			}
 
-			dest[i] = time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff)
-
+			//dest[i] = time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff)
+            dest[i] = int64( time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff))
 		case C.SQLT_INTERVAL_YM:
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
 

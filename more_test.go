@@ -179,7 +179,7 @@ func TestInterval1(t *testing.T) {
 	fmt.Println("test interval1:")
 	n := time.Duration( 1234567898123456789)
 	r := sqlstest( db, t, "select NUMTODSINTERVAL( :0 / 1000000000, 'SECOND') as intervalds from dual", int64(n))
-	if n != r["INTERVALDS"].(time.Duration) {
+	if n != time.Duration(r["INTERVALDS"].(int64)) {
 		t.Fatal( r,"!=", n)
 	}
 }
@@ -192,7 +192,7 @@ func TestInterval2(t *testing.T) {
 	fmt.Println("test interval2:")
 	n := time.Duration( -1234567898123456789)
 	r := sqlstest( db, t, "select NUMTODSINTERVAL( :0 / 1000000000, 'SECOND') as intervalds from dual", int64(n))
-	if n != r["INTERVALDS"].(time.Duration) {
+	if n != time.Duration(r["INTERVALDS"].(int64)) {
 		t.Fatal( r,"!=", n)
 	}
 }
@@ -229,10 +229,10 @@ func TestIntervals5(t *testing.T) {
 	n3 := int64(4332)
 	n4 := int64(-1239872)
 	r := sqlstest( db, t, "select NUMTODSINTERVAL( :0 / 1000000000, 'SECOND') as i1, NUMTODSINTERVAL( :1 / 1000000000, 'SECOND') as i2, NUMTOYMINTERVAL( :2, 'MONTH') as i3, NUMTOYMINTERVAL( :3, 'MONTH') as i4 from dual", n1,n2,n3,n4)
-	if n1 != r["I1"].(time.Duration) {
+	if n1 != time.Duration(r["I1"].(int64)) {
 		t.Fatal( r["I1"],"!=", n1)
 	}
-	if n2 != r["I2"].(time.Duration) {
+	if n2 != time.Duration(r["I2"].(int64)) {
 		t.Fatal( r["I2"],"!=", n2)
 	}
 	if n3 != r["I3"].(int64) {
