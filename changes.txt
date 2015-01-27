@@ -1,0 +1,16 @@
+
+some changes to mattn go-oci8 sql driver:
+
+-many bugs fixed. 
+-driver doesn't pass go pointers to CGO, can work with future go versions
+-support more oracle types, blob, clob, timestamp, interval, rowid
+-return INTERVAL YEAR TO MONTH as int64 (months)
+-return INTERVAL DAY TO SECOND as duration
+-return rowid as string
+-native support for float64, int64
+
+-added isolation level parameter to dsn, transactions can be READONLY,SERIALIZABLE, READWRITE
+-removed LastInsertId  from Result, oracle returns LastInsertId as rowid descriptor,
+		can't be converted to int64, only to string
+-when connection are not in transaction, changes to database are autocommited
+
