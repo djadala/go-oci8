@@ -5,7 +5,7 @@ some changes to mattn go-oci8 sql driver:
 -driver doesn't pass go pointers to CGO, can work with future go versions
 -support more oracle types, blob, clob, timestamp, interval, rowid
 -return INTERVAL YEAR TO MONTH as int64(months)
--return INTERVAL DAY TO SECOND as int64(nanosecs)
+-return INTERVAL DAY TO SECOND as int64(nanosecs, can be cast to duration)
 -return rowid as string
 -native support for float64, int64
 
