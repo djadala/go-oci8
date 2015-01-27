@@ -633,7 +633,96 @@ func TestChar(t *testing.T) {
 
 
 
+func TestDate(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C6"
+	
+	const fm = "2006-01-02 15:04:05.999999999 -07:00"
+	
+	n, err:= time.Parse( fm, "2014-10-23 04:56:12.123456789 +09:06")
+	if err != nil {
+		t.Fatal( err)
+	}
+	
+	
+	
+	id := "idbdate"+f
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
 
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	fmt.Println( n,   r[f].( time.Time))
+}
+
+
+func TestTimestamp(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C9"
+	
+	const fm = "2006-01-02 15:04:05.999999999 -07:00"
+	
+	n, err:= time.Parse( fm, "2014-10-23 04:56:12.123456789 +09:06")
+	if err != nil {
+		t.Fatal( err)
+	}
+	
+	
+	
+	id := "idTstamp"+f
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	fmt.Println( n,   r[f].( time.Time))
+}
+
+
+func TestTimestampTz(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C10"
+	
+	const fm = "2006-01-02 15:04:05.999999999 -07:00"
+	
+	n, err:= time.Parse( fm, "2014-10-23 04:56:12.123456789 +09:06")
+	if err != nil {
+		t.Fatal( err)
+	}
+	
+	
+	
+	id := "idTs"+f
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	fmt.Println( n,   r[f].( time.Time))
+}
+
+
+func TestTimestampLtz(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+	f := "C11"
+	
+	const fm = "2006-01-02 15:04:05.999999999 -07:00"
+	
+	n, err:= time.Parse( fm, "2014-10-23 04:56:12.123456000 +09:06")
+	if err != nil {
+		t.Fatal( err)
+	}
+	
+	
+	
+	id := "idTs"+f
+    db.Exec("insert into foo( " + f + ", cend) values( :1, :2)", n, id)
+
+	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
+	fmt.Println( n,   r[f].( time.Time) , "equal ?", n.Equal( r[f].( time.Time))  )
+}
 
 
 

@@ -13,7 +13,7 @@ some changes to mattn go-oci8 sql driver:
 -removed LastInsertId  from Result, oracle returns LastInsertId as rowid descriptor,
 		can't be converted to int64, only to string
 -when connection are not in transaction, changes to database are autocommited
-
+-no need for loc dsn parameter - dates are returned as timestamp, server inserts its local timezone
 
 
 
