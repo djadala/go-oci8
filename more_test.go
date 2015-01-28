@@ -471,40 +471,6 @@ func TestSmallClob(t *testing.T) {
 }
 
 
-//watch mem in top :)
-func zzTestMem(t *testing.T) {
-	
-    cn, _,_,_ := runtime.Caller(0)
-	fmt.Println( runtime.FuncForPC(cn).Name())
-
-	
-	for now := time.Now().Add( time.Minute*5);  now.After( time.Now()); {
-		TestTruncate( t)
-		TestSelect1(t)
-		TestInterval1(t)
-		TestInterval2(t)
-		TestInterval3(t)
-		TestInterval4(t)
-		TestIntervals5(t)
-		TestTime1(t)
-		TestTime2(t)
-		TestTime3(t)
-		TestBytes1(t)
-		TestBytes2(t)
-		TestString1(t)
-		TestString2(t)
-		TestString3(t)
-		TestFooLargeBlob(t)
-		TestSmallBlob(t)
-		TestFooRowid(t)
-		TestTransaction1(t)
-		TestBigClob(t)
-		TestSmallClob(t)
-	}
-}
-	
-
-
 func TestNvarchar(t *testing.T) {
 	
     cn, _,_,_ := runtime.Caller(0)
@@ -723,6 +689,57 @@ func TestTimestampLtz(t *testing.T) {
 	r := sqlstest( db,  t, "select " + f + " from foo where cend= :1", id)
 	fmt.Println( n,   r[f].( time.Time) , "equal ?", n.Equal( r[f].( time.Time))  )
 }
+
+
+
+
+//watch mem in top :)    I wish valgrind can run go progs...
+//warn 5 min test !!!!
+func zzTestMem(t *testing.T) {
+	
+    cn, _,_,_ := runtime.Caller(0)
+	fmt.Println( runtime.FuncForPC(cn).Name())
+
+	
+	for now := time.Now().Add( time.Minute*5);  now.After( time.Now()); {
+		TestTruncate( t)
+		TestSelect1(t)
+		TestInterval1(t)
+		TestInterval2(t)
+		TestInterval3(t)
+		TestInterval4(t)
+		TestIntervals5(t)
+		TestTime1(t)
+		TestTime2(t)
+		TestTime3(t)
+		TestBytes1(t)
+		TestBytes2(t)
+		TestString1(t)
+		TestString2(t)
+		TestString3(t)
+		TestFooLargeBlob(t)
+		TestSmallBlob(t)
+		TestFooRowid(t)
+		TestTransaction1(t)
+		TestBigClob(t)
+		TestSmallClob(t)
+		TestNvarchar(t)
+		TestNumber1(t)
+		TestNumber2(t)
+		TestFloat1(t)
+		TestBinFloat1(t)
+		TestBinFloat2(t)
+		TestNchar(t)
+		TestChar(t)
+		TestDate(t)
+		TestTimestamp(t)
+		TestTimestampTz(t)
+		TestTimestampLtz(t)
+	}
+}
+
+
+
 
 
 

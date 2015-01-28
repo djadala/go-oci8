@@ -17,3 +17,17 @@ some changes to mattn go-oci8 sql driver:
 
 
 
+
+go-oci8 sql driver
+
+Hi,
+
+if u are interested, this is go-oci8 driver improved & fixed.
+
+sorry for tar.gz file, i dont have github account and dont want to create one.
+also my git history is useles.
+
+examples are in more_test.go
+
+Regards,
+
