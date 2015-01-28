@@ -9,7 +9,7 @@ some changes to mattn go-oci8 sql driver:
 -native support for float64, int64
 
 -added isolation level parameter to dsn, transactions can be READONLY,SERIALIZABLE, READWRITE
--removed LastInsertId  from Result, oracle returns LastInsertId as rowid descriptor,
+-removed LastInsertId  from Result, Oracle returns LastInsertId as rowid descriptor,
 		can't be converted to int64, only to string
 -when connection are not in transaction, changes to database are autocommited
 -no need for loc dsn parameter - dates are returned as timestamp, server inserts its local timezone
@@ -18,7 +18,7 @@ some changes to mattn go-oci8 sql driver:
 1.
   all checks 'rv == OCI_ERROR' are incorrect, there are other error values.
   for example in 'func (c *OCI8Conn) Begin() (driver.Tx, error)' call to
-  C.OCITransStart return OCI_INVALID_HANDLE and it never worked.
+  C.OCITransStart is returning OCI_INVALID_HANDLE and it's never working.
   all checks must be 'if rv !=  OCI_SUCCESS'
 2.
   original blob code works only if tranfered bytes len < 4000, else only first 4000 bytes are returned
@@ -31,14 +31,14 @@ go-oci8 sql driver
 
 Hi,
 
-if u are interested, this is go-oci8 driver improved & fixed.
+If u are interested, this is go-oci8 driver with many improvements & fixes.
 
-sorry for tar.gz file, i dont have github account and dont want to create one.
-also my git history is useles.
+Sorry for tar.gz file, i don't use github and don't want to create account,
+also my git history is useless.
 
 see file more_test.go
 
-i can continue support for go-oci8 via email/patches, if u accept it
+if u have questions, please ask.
 
 Best Regards,
 
