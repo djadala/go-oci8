@@ -1,8 +1,7 @@
 
 some changes to mattn go-oci8 sql driver:
 
--many bugs fixed.
--driver doesn't pass go pointers to CGO, can work with future go versions
+-driver doesn't pass go pointers to CGO, can work with future go versions/moving garbage collectors
 -support more oracle types, blob, clob, timestamp, interval, rowid
 -return INTERVAL YEAR TO MONTH as int64(months)
 -return INTERVAL DAY TO SECOND as int64(nanosecs, can be cast to duration)
@@ -15,6 +14,16 @@ some changes to mattn go-oci8 sql driver:
 -when connection are not in transaction, changes to database are autocommited
 -no need for loc dsn parameter - dates are returned as timestamp, server inserts its local timezone
 
+-many bugs fixed:
+1.
+  all checks 'rv == OCI_ERROR' are incorrect, there are other error values.
+  for example in 'func (c *OCI8Conn) Begin() (driver.Tx, error)' call to
+  C.OCITransStart return OCI_INVALID_HANDLE and it never worked.
+  all checks must be 'if rv !=  OCI_SUCCESS'
+2.
+  original blob code works only if tranfered bytes len < 4000, else only first 4000 bytes are returned
+
+  
 
 
 
@@ -27,7 +36,9 @@ if u are interested, this is go-oci8 driver improved & fixed.
 sorry for tar.gz file, i dont have github account and dont want to create one.
 also my git history is useles.
 
-examples are in more_test.go
+see file more_test.go
 
-Regards,
+i can continue support for go-oci8 via email/patches, if u accept it
+
+Best Regards,
 

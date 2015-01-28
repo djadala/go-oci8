@@ -272,6 +272,10 @@ retIntervalYM WrapOCIIntervalGetYearMonth( OCIEnv *env, OCIError *err, OCIInterv
 	return vvv;
 }
 
+sword WrapOCIAttrSetUb4( dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError *err) {
+    return OCIAttrSet( h, type, &value, 0, attrtype, err);
+}
+
 
 */
 import "C"
@@ -847,16 +851,25 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	}
 
 	// set the row prefetch.  Only one extra row per fetch will be returned unless this is set.
-	prefetch_size := C.ub4(s.c.attrs.Get("prefetch_rows").(int))
-	C.OCIAttrSet(s.s, C.OCI_HTYPE_STMT, unsafe.Pointer(&prefetch_size), 0, C.OCI_ATTR_PREFETCH_ROWS, (*C.OCIError)(s.c.err))
+	if prefetch_size := C.ub4(s.c.attrs.Get("prefetch_rows").(int)); prefetch_size > 0 {
+		if rv := C.WrapOCIAttrSetUb4( s.s, C.OCI_HTYPE_STMT, prefetch_size, C.OCI_ATTR_PREFETCH_ROWS, (*C.OCIError)(s.c.err));
+			rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+		}
+	}
+
 
 	// if non-zero, oci will fetch rows until the memory limit or row prefetch limit is hit.
 	// useful for memory constrained systems
-	prefetch_memory := C.ub4(s.c.attrs.Get("prefetch_memory").(int64))
-	C.OCIAttrSet(s.s, C.OCI_HTYPE_STMT, unsafe.Pointer(&prefetch_memory), 0, C.OCI_ATTR_PREFETCH_MEMORY, (*C.OCIError)(s.c.err))
+	if prefetch_memory := C.ub4(s.c.attrs.Get("prefetch_memory").(int64)); prefetch_memory > 0 {
+		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, prefetch_memory, C.OCI_ATTR_PREFETCH_MEMORY, (*C.OCIError)(s.c.err));
+			rv != C.OCI_SUCCESS {
+				return nil, ociGetError(s.c.err)
+		}
+	}
 
 	mode := C.ub4(C.OCI_DEFAULT)
-	if s.c.inTransaction == false {
+	if !s.c.inTransaction {
 		mode = mode | C.OCI_COMMIT_ON_SUCCESS
 	}
 	if rv := C.OCIStmtExecute(
