@@ -448,16 +448,6 @@ func (tx *OCI8Tx) Rollback() error {
 	return nil
 }
 
-/*
-func (c *OCI8Conn) exec(cmd string) error { //Exec(query string, args []Value) (Result, error) ???????????
-	stmt, err := c.Prepare(cmd)
-	if err == nil {
-		defer stmt.Close()
-		_, err = stmt.Exec(nil)
-	}
-	return err
-}
-*/
 func (c *OCI8Conn) Begin() (driver.Tx, error) {
 	if c.transactionMode != C.OCI_TRANS_READWRITE {
 		var th unsafe.Pointer
@@ -566,8 +556,6 @@ func (c *OCI8Conn) Close() error {
 		(*C.OCIError)(c.err)); rv != C.OCI_SUCCESS {
 		err = ociGetError(c.err)
 		log.Println(err)
-	} else {
-		err = nil
 	}
 
 	C.OCIHandleFree(
@@ -966,7 +954,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			//
 			//			oci8cols[i].kind = C.SQLT_DAT
 			//			oci8cols[i].size = int(lp)
-			//			oci8cols[i].pbuf = C.malloc( C.size_t(lp) )
+			//			oci8cols[i].pbuf = C.malloc(C.size_t(lp))
 			//
 
 		case C.SQLT_TIMESTAMP, C.SQLT_DAT:
@@ -1066,31 +1054,15 @@ func (s *OCI8Stmt) rowsAffected() (int64, error) {
 }
 
 type OCI8Result struct {
-	//s *OCI8Stmt
 	n    int64
 	errn error
 }
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	/*
-		retUb4 := C.OCIAttrGetUb4(r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(r.s.c.err))
-		if retUb4.rv != C.OCI_SUCCESS {
-			return 0, ociGetError(r.s.c.err)
-		}
-		return int64(retUb4.num), nil
-	*/
-	//	return r.id, r.errid
 	return 0, errors.New("no LastInsertId available")
 }
 
 func (r *OCI8Result) RowsAffected() (int64, error) {
-	/*
-		retUb4 := C.OCIAttrGetUb4(r.s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(r.s.c.err))
-		if retUb4.rv != C.OCI_SUCCESS {
-			return 0, ociGetError(r.s.c.err)
-		}
-		return int64(retUb4.num), nil
-	*/
 	return r.n, r.errn
 }
 
