@@ -276,7 +276,6 @@ sword WrapOCIAttrSetUb4( dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError 
     return OCIAttrSet( h, type, &value, 0, attrtype, err);
 }
 
-
 */
 import "C"
 import (
@@ -294,7 +293,6 @@ import (
 	"strings"
 	"time"
 	"unsafe"
-	//"sync"
 )
 
 const blobBufSize = 4000
@@ -538,6 +536,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	defer C.free(unsafe.Pointer(puser))
 	ppass := C.CString(dsn.Password)
 	defer C.free(unsafe.Pointer(ppass))
+
 	if rv := C.WrapOCILogon(
 		(*C.OCIEnv)(conn.env),
 		(*C.OCIError)(conn.err),
@@ -599,7 +598,6 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 		s = rv.ptr
 		bp = rv.extra
 		defp = unsafe.Pointer(uintptr(rv.extra) + unsafe.Sizeof(unsafe.Pointer(nil)))
-
 	}
 
 	if rv := C.OCIStmtPrepare(
@@ -1120,7 +1118,6 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 	if rv != C.OCI_SUCCESS {
 		return nil, ociGetError(s.c.err)
 	}
-	//return &OCI8Result{s}, nil
 	n, en := s.rowsAffected()
 	//id, ei := s.lastInsertId()
 	return &OCI8Result{n: n, errn: en}, nil
@@ -1251,7 +1248,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			if rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
-			//dest[i] = append(buf, b[:int(*bamt)]...)//buf//b[:total+int(bamt)]
 			if rc.cols[i].kind == C.SQLT_BLOB {
 				dest[i] = append(buf, b[:int(*bamt)]...)
 			} else {
@@ -1268,16 +1264,12 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			default:
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
-
 		case C.SQLT_BIN: // RAW
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
-			//fmt.Println("RAW column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			dest[i] = buf
 		case C.SQLT_LNG: // LONG
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
-			//fmt.Println("LONG  column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
 			dest[i] = buf
-
 		case C.SQLT_IBDOUBLE, C.SQLT_IBFLOAT:
 			colsize := rc.cols[i].size
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:colsize]
@@ -1293,9 +1285,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				} else {
 					v &= 0x7fffffff
 				}
-
-				//fmt.Printf("%x %x %x %x\n", buf[0], buf[1], buf[2], buf[3])
-
 				dest[i] = math.Float32frombits(v)
 			} else if colsize == 8 {
 				v := uint64(buf[7])
@@ -1318,7 +1307,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			} else {
 				return errors.New(fmt.Sprintf("Unhandled binary float size: %d", colsize))
 			}
-
 		case C.SQLT_TIMESTAMP:
 			if rv := C.WrapOCIDateTimeGetDateTime(
 				(*C.OCIEnv)(rc.s.c.env),
@@ -1337,7 +1325,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 					int(rv.ff),
 					rc.s.c.location)
 			}
-
 		case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
 			tptr := *(**C.OCIDateTime)(rc.cols[i].pbuf)
 			rv := C.WrapOCIDateTimeGetDateTime(
@@ -1352,17 +1339,14 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				(*C.OCIError)(rc.s.c.err),
 				tptr)
 			if rvz.rv != C.OCI_SUCCESS {
-				//fmt.Println(ociGetError(rc.s.c.err))
 				return ociGetError(rc.s.c.err)
 			}
-
 			nnn := C.GoStringN((*C.char)((unsafe.Pointer)(&rvz.zone[0])), C.int(rvz.zlen))
 			loc, err := time.LoadLocation(nnn)
 			if err != nil {
 				//TODO reuse locations
 				loc = time.FixedZone(nnn, int(rvz.h)*60*60+int(rvz.m)*60)
 			}
-
 			dest[i] = time.Date(
 				int(rv.y),
 				time.Month(rv.m),
@@ -1372,39 +1356,26 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				int(rv.ss),
 				int(rv.ff),
 				loc)
-
-			// case C.SQLT_TIMESTAMP_LTZ:
-			// fmt.Println("SQLT_TIMESTAMP_LTZ")
-			// fmt.Println("column size: ", rc.cols[i].size, "rlen =", rc.cols[i].rlen)
-			// dest[i] = nil
-
 		case C.SQLT_INTERVAL_DS:
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
 			rv := C.WrapOCIIntervalGetDaySecond(
 				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
-				iptr, //(*C.OCIInterval)(rc.cols[i].pbuf),
-			)
+				iptr)
 			if rv.rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
-
-			//dest[i] = time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff)
 			dest[i] = int64(time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff))
 		case C.SQLT_INTERVAL_YM:
 			iptr := *(**C.OCIInterval)(rc.cols[i].pbuf)
-
 			rv := C.WrapOCIIntervalGetYearMonth(
 				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
-				iptr, //(*C.OCIInterval)(rc.cols[i].pbuf),
-			)
+				iptr)
 			if rv.rv != C.OCI_SUCCESS {
 				return ociGetError(rc.s.c.err)
 			}
-
 			dest[i] = int64(rv.y)*12 + int64(rv.m)
-
 		default:
 			return errors.New(fmt.Sprintf("Unhandled column type: %d", rc.cols[i].kind))
 		}
@@ -1440,7 +1411,6 @@ func parseEnviron(env []string) (out map[string]interface{}) {
 			out["prefetch_rows"], _ = strconv.Atoi(parts[1])
 		case "PREFETCH_MEMORY":
 			out["prefetch_memory"], _ = strconv.ParseInt(parts[1], 10, 64)
-
 		}
 	}
 	return out
