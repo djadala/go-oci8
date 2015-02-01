@@ -45,7 +45,6 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
 }
 
 func TestTruncate(t *testing.T) {
@@ -271,13 +270,11 @@ func TestTime2(t *testing.T) {
 }
 
 func TestTime3(t *testing.T) {
-
 	fmt.Println("test sysdate:")
 	sqlstest(db, t, "select sysdate - 365*6500 from dual")
 }
 
 func TestBytes1(t *testing.T) {
-
 	fmt.Println("test bytes1:")
 	n := bytes.Repeat([]byte{'A'}, 4000)
 	r := sqlstest(db, t, "select :0 as bytes from dual", n)
@@ -287,7 +284,6 @@ func TestBytes1(t *testing.T) {
 }
 
 func TestBytes2(t *testing.T) {
-
 	fmt.Println("test bytes2:")
 	n := []byte{7}
 	r := sqlstest(db, t, "select :0 as bytes from dual", n)
@@ -297,7 +293,6 @@ func TestBytes2(t *testing.T) {
 }
 
 func TestString1(t *testing.T) {
-
 	fmt.Println("test string1:")
 	n := strings.Repeat("1234567890", 400)
 	r := sqlstest(db, t, "select :0 as str from dual", n)
@@ -317,7 +312,6 @@ func TestString2(t *testing.T) {
 }
 
 func TestString3(t *testing.T) {
-
 	fmt.Println("test string3:")
 	//n := "こんにちは 世界 Καλημέρα κόσμε こんにちは안녕하세요góðan dagGrüßgotthyvää päivääyá'át'ééhΓεια σαςВiтаюგამარჯობაनमस्ते你好здравейсвят"
 	//this test depends of database charset !!!!
@@ -329,7 +323,6 @@ func TestString3(t *testing.T) {
 }
 
 func TestFooLargeBlob(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println("test foo blob:", runtime.FuncForPC(cn).Name())
 	n := make([]byte, 600000)
@@ -344,11 +337,9 @@ func TestFooLargeBlob(t *testing.T) {
 	if !bytes.Equal(n, r["C21"].([]byte)) {
 		t.Fatal(r["C21"], "!=", n)
 	}
-
 }
 
 func TestSmallBlob(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
@@ -364,21 +355,17 @@ func TestSmallBlob(t *testing.T) {
 	if !bytes.Equal(n, r["C21"].([]byte)) {
 		t.Fatal(r["C21"], "!=", n)
 	}
-
 }
 
 func TestFooRowid(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
 	sqlstest(db, t, "select rowid from foo")
-
 }
 
 //this test fail if transactions are readonly
 func TestTransaction1(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
@@ -407,7 +394,6 @@ func TestTransaction1(t *testing.T) {
 }
 
 func TestBigClob(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
@@ -423,7 +409,6 @@ func TestBigClob(t *testing.T) {
 }
 
 func TestSmallClob(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
@@ -438,7 +423,6 @@ func TestSmallClob(t *testing.T) {
 }
 
 func TestNvarchar(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
@@ -453,7 +437,6 @@ func TestNvarchar(t *testing.T) {
 }
 
 func TestNumber1(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C3"
@@ -468,7 +451,6 @@ func TestNumber1(t *testing.T) {
 }
 
 func TestNumber2(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C3"
@@ -483,7 +465,6 @@ func TestNumber2(t *testing.T) {
 }
 
 func TestFloat1(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C4"
@@ -498,7 +479,6 @@ func TestFloat1(t *testing.T) {
 }
 
 func TestBinFloat1(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C7"
@@ -513,7 +493,6 @@ func TestBinFloat1(t *testing.T) {
 }
 
 func TestBinFloat2(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C8"
@@ -528,7 +507,6 @@ func TestBinFloat2(t *testing.T) {
 }
 
 func TestNchar(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C18"
@@ -558,7 +536,6 @@ func TestChar(t *testing.T) {
 }
 
 func TestDate(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C6"
@@ -578,7 +555,6 @@ func TestDate(t *testing.T) {
 }
 
 func TestTimestamp(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C9"
@@ -598,7 +574,6 @@ func TestTimestamp(t *testing.T) {
 }
 
 func TestTimestampTz(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C10"
@@ -618,7 +593,6 @@ func TestTimestampTz(t *testing.T) {
 }
 
 func TestTimestampLtz(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 	f := "C11"
@@ -640,7 +614,6 @@ func TestTimestampLtz(t *testing.T) {
 //watch mem in top :)    I wish valgrind can run go progs...
 //warn 5 min test !!!!
 func zzTestMem(t *testing.T) {
-
 	cn, _, _, _ := runtime.Caller(0)
 	fmt.Println(runtime.FuncForPC(cn).Name())
 
