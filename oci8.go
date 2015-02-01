@@ -8,272 +8,276 @@ package oci8
 #cgo pkg-config: oci8
 
 typedef struct {
-	int num;
-	sword rv;
+  int num;
+  sword rv;
 } retInt;
-retInt OCIAttrGetInt( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
-	retInt vvv = {0,0};
-	vvv.rv = OCIAttrGet(
-		ss,
-		hType,
-		&vvv.num,
-		NULL,
-		aType,
-		err);
 
-	return vvv;
+static retInt
+WrapOCIAttrGetInt(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+  retInt vvv = {0, 0};
+  vvv.rv = OCIAttrGet(
+    ss,
+    hType,
+    &vvv.num,
+    NULL,
+    aType,
+    err);
+  return vvv;
 }
 
 typedef struct {
-	ub2 num;
-	sword rv;
+  ub2 num;
+  sword rv;
 } retUb2;
-retUb2 OCIAttrGetUb2( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
-	retUb2 vvv = {0,0};
-	vvv.rv = OCIAttrGet(
-		ss,
-		hType,
-		&vvv.num,
-		NULL,
-		aType,
-		err);
 
-	return vvv;
+static retUb2
+WrapOCIAttrGetUb2(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+  retUb2 vvv = {0, 0};
+  vvv.rv = OCIAttrGet(
+    ss,
+    hType,
+    &vvv.num,
+    NULL,
+    aType,
+    err);
+  return vvv;
 }
 
 typedef struct {
-	ub4 num;
-	sword rv;
+  ub4 num;
+  sword rv;
 } retUb4;
-retUb4 OCIAttrGetUb4( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
-	retUb4 vvv = {0,0};
-	vvv.rv = OCIAttrGet(
-		ss,
-		hType,
-		&vvv.num,
-		NULL,
-		aType,
-		err);
 
-	return vvv;
+static retUb4
+WrapOCIAttrGetUb4(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+  retUb4 vvv = {0,0};
+  vvv.rv = OCIAttrGet(
+    ss,
+    hType,
+    &vvv.num,
+    NULL,
+    aType,
+    err);
+  return vvv;
 }
 
 typedef struct {
-    char *ptr;
-	ub4 size;
-	sword rv;
+  char *ptr;
+  ub4 size;
+  sword rv;
 } retString;
-retString OCIAttrGetString( dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
-	retString vvv = {NULL,0,0};
-	vvv.rv = OCIAttrGet(
-		ss,
-		hType,
-		&vvv.ptr,
-		&vvv.size,
-		aType,
-		err);
 
-	return vvv;
+static retString
+WrapOCIAttrGetString(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+  retString vvv = {NULL, 0, 0};
+  vvv.rv = OCIAttrGet(
+    ss,
+    hType,
+    &vvv.ptr,
+    &vvv.size,
+    aType,
+    err);
+  return vvv;
 }
 
-//////////////////////////////////////////////
-
 typedef struct {
-    dvoid *ptr;
-	sword rv;
+  dvoid *ptr;
+  sword rv;
 } ret1ptr;
 
 typedef struct {
-    dvoid *ptr;
-    dvoid *extra;
-	sword rv;
+  dvoid *ptr;
+  dvoid *extra;
+  sword rv;
 } ret2ptr;
 
-ret1ptr WrapOCIParamGet( dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
-    ret1ptr vvv = { NULL, 0};
-	vvv.rv = OCIParamGet(
-			ss,
-			hType,
-			err,
-			&vvv.ptr,
-			pos);
-	return vvv;
+static ret1ptr
+WrapOCIParamGet(dvoid *ss, ub4 hType, OCIError *err, ub4 pos) {
+  ret1ptr vvv = {NULL, 0};
+  vvv.rv = OCIParamGet(
+    ss,
+    hType,
+    err,
+    &vvv.ptr,
+    pos);
+  return vvv;
 }
 
-ret2ptr WrapOCIDescriptorAlloc( dvoid *env, ub4 type, size_t extra) {
-    ret2ptr vvv = { NULL, NULL, 0};
-    void *ptr;
-    if( extra == 0)  {
-       ptr = NULL;
-    } else {
-       ptr = &vvv.extra;
-    }
-	vvv.rv = OCIDescriptorAlloc(
-				env,
-				&vvv.ptr,
-				type,
-				extra,
-				&vvv.extra);
-	return vvv;
+static ret2ptr
+WrapOCIDescriptorAlloc(dvoid *env, ub4 type, size_t extra) {
+  ret2ptr vvv = {NULL, NULL, 0};
+  void *ptr;
+  if (extra == 0) {
+    ptr = NULL;
+  } else {
+    ptr = &vvv.extra;
+  }
+  vvv.rv = OCIDescriptorAlloc(
+    env,
+    &vvv.ptr,
+    type,
+    extra,
+    &vvv.extra);
+  return vvv;
 }
 
-ret2ptr WrapOCIHandleAlloc( dvoid *parrent, ub4 type, size_t extra) {
-    ret2ptr vvv = { NULL, NULL, 0};
-    void *ptr;
-    if( extra == 0)  {
-       ptr = NULL;
-    } else {
-       ptr = &vvv.extra;
-    }
-	vvv.rv = OCIHandleAlloc(
-				parrent,
-				&vvv.ptr,
-				type,
-				extra,
-				ptr);
-	return vvv;
+static ret2ptr
+WrapOCIHandleAlloc(dvoid *parrent, ub4 type, size_t extra) {
+  ret2ptr vvv = {NULL, NULL, 0};
+  void *ptr;
+  if (extra == 0) {
+    ptr = NULL;
+  } else {
+    ptr = &vvv.extra;
+  }
+  vvv.rv = OCIHandleAlloc(
+    parrent,
+    &vvv.ptr,
+    type,
+    extra,
+    ptr);
+  return vvv;
 }
 
-ret2ptr WrapOCIEnvCreate( ub4 mode, size_t extra) {
-    ret2ptr vvv = { NULL, NULL, 0};
-    void *ptr;
-    if( extra == 0)  {
-       ptr = NULL;
-    } else {
-       ptr = &vvv.extra;
-    }
-	vvv.rv = OCIEnvCreate(
-		(OCIEnv**)(&vvv.ptr),
-		mode,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		extra,
-		ptr);
-	return vvv;
+static ret2ptr
+WrapOCIEnvCreate(ub4 mode, size_t extra) {
+  ret2ptr vvv = {NULL, NULL, 0};
+  void *ptr;
+  if (extra == 0)  {
+    ptr = NULL;
+  } else {
+    ptr = &vvv.extra;
+  }
+  vvv.rv = OCIEnvCreate(
+    (OCIEnv**)(&vvv.ptr),
+    mode,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    extra,
+    ptr);
+  return vvv;
 }
 
-ret1ptr WrapOCILogon( OCIEnv *env, OCIError *err, OraText *u, ub4 ulen, OraText *p, ub4 plen, OraText *h, ub4 hlen) {
-    ret1ptr vvv = { NULL, 0};
-	vvv.rv = OCILogon(
-		env,
-		err,
-		(OCISvcCtx**)(&vvv.ptr),
-		u,
-		ulen,
-		p,
-		plen,
-		h,
-		hlen);
-	return vvv;
+static ret1ptr
+WrapOCILogon(OCIEnv *env, OCIError *err, OraText *u, ub4 ulen, OraText *p, ub4 plen, OraText *h, ub4 hlen) {
+  ret1ptr vvv = {NULL, 0};
+  vvv.rv = OCILogon(
+    env,
+    err,
+    (OCISvcCtx**)(&vvv.ptr),
+    u,
+    ulen,
+    p,
+    plen,
+    h,
+    hlen);
+  return vvv;
 }
-
-////////////////////////////////////////////
 
 typedef struct {
-    ub4 ff;
-    sb2 y;
-    ub1 m, d, hh, mm, ss;
-	sword rv;
+  ub4 ff;
+  sb2 y;
+  ub1 m, d, hh, mm, ss;
+  sword rv;
 } retTime;
-retTime WrapOCIDateTimeGetDateTime(  OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
-	retTime vvv;
 
-	vvv.rv = OCIDateTimeGetDate(
-				env,
-				err,
-				tptr,
-				&vvv.y,
-				&vvv.m,
-				&vvv.d
-			);
-	if( vvv.rv != OCI_SUCCESS) {
-		return vvv;
-	}
-	vvv.rv = OCIDateTimeGetTime(
-				env,
-				err,
-				tptr,
-				&vvv.hh,
-				&vvv.mm,
-				&vvv.ss,
-				&vvv.ff
-			);
-	return vvv;
+static retTime
+WrapOCIDateTimeGetDateTime(OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
+  retTime vvv;
+
+  vvv.rv = OCIDateTimeGetDate(
+    env,
+    err,
+    tptr,
+    &vvv.y,
+    &vvv.m,
+    &vvv.d);
+  if (vvv.rv != OCI_SUCCESS) {
+    return vvv;
+  }
+  vvv.rv = OCIDateTimeGetTime(
+    env,
+    err,
+    tptr,
+    &vvv.hh,
+    &vvv.mm,
+    &vvv.ss,
+    &vvv.ff);
+  return vvv;
 }
 
-
-
 typedef struct {
-    sb1 h, m;
-    ub1 zone[90]; // = max timezone name len
-    ub4 zlen;
-	sword rv;
+  sb1 h, m;
+  ub1 zone[90]; // = max timezone name len
+  ub4 zlen;
+  sword rv;
 } retZone;
-retZone WrapOCIDateTimeGetTimeZoneNameOffset( OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
-	retZone vvv;
-	vvv.zlen = sizeof(vvv.zone);
 
-	vvv.rv = OCIDateTimeGetTimeZoneName(
-				env,
-				err,
-				tptr,
-				vvv.zone,
-				&vvv.zlen
-			);
-	if( vvv.rv != OCI_SUCCESS) {
-		return vvv;
-	}
-	vvv.rv = OCIDateTimeGetTimeZoneOffset(
-		env,
-		err,
-		tptr,
-		&vvv.h,
-		&vvv.m
-	);
-	return vvv;
+static retZone
+WrapOCIDateTimeGetTimeZoneNameOffset(OCIEnv *env, OCIError *err, OCIDateTime *tptr) {
+  retZone vvv;
+  vvv.zlen = sizeof(vvv.zone);
+
+  vvv.rv = OCIDateTimeGetTimeZoneName(
+    env,
+    err,
+    tptr,
+    vvv.zone,
+    &vvv.zlen);
+  if (vvv.rv != OCI_SUCCESS) {
+    return vvv;
+  }
+  vvv.rv = OCIDateTimeGetTimeZoneOffset(
+    env,
+    err,
+    tptr,
+    &vvv.h,
+    &vvv.m);
+  return vvv;
 }
 
-
-////////////////////////////////////////////
-
 typedef struct {
-    sb4 d, hh, mm, ss, ff;
-	sword rv;
+  sb4 d, hh, mm, ss, ff;
+  sword rv;
 } retIntervalDS;
-retIntervalDS WrapOCIIntervalGetDaySecond( OCIEnv *env, OCIError *err, OCIInterval *ptr) {
-    retIntervalDS vvv;
-	vvv.rv = OCIIntervalGetDaySecond(
-		env,
-		err,
-		&vvv.d,
-		&vvv.hh,
-		&vvv.mm,
-		&vvv.ss,
-		&vvv.ff,
-		ptr);
-	return vvv;
-}
 
+static retIntervalDS
+WrapOCIIntervalGetDaySecond(OCIEnv *env, OCIError *err, OCIInterval *ptr) {
+  retIntervalDS vvv;
+  vvv.rv = OCIIntervalGetDaySecond(
+    env,
+    err,
+    &vvv.d,
+    &vvv.hh,
+    &vvv.mm,
+    &vvv.ss,
+    &vvv.ff,
+    ptr);
+  return vvv;
+}
 
 typedef struct {
-    sb4 y, m;
-	sword rv;
+  sb4 y, m;
+  sword rv;
 } retIntervalYM;
-retIntervalYM WrapOCIIntervalGetYearMonth( OCIEnv *env, OCIError *err, OCIInterval *ptr) {
-    retIntervalYM vvv;
-	vvv.rv = OCIIntervalGetYearMonth(
-		env,
-		err,
-		&vvv.y,
-		&vvv.m,
-		ptr);
-	return vvv;
+
+static retIntervalYM
+WrapOCIIntervalGetYearMonth(OCIEnv *env, OCIError *err, OCIInterval *ptr) {
+  retIntervalYM vvv;
+  vvv.rv = OCIIntervalGetYearMonth(
+    env,
+    err,
+    &vvv.y,
+    &vvv.m,
+    ptr);
+  return vvv;
 }
 
-sword WrapOCIAttrSetUb4( dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError *err) {
-    return OCIAttrSet( h, type, &value, 0, attrtype, err);
+static sword
+WrapOCIAttrSetUb4(dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError *err) {
+  return OCIAttrSet(h, type, &value, 0, attrtype, err);
 }
 
 */
@@ -628,7 +632,7 @@ func (s *OCI8Stmt) Close() error {
 }
 
 func (s *OCI8Stmt) NumInput() int {
-	r := C.OCIAttrGetInt(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_BIND_COUNT, (*C.OCIError)(s.c.err))
+	r := C.WrapOCIAttrGetInt(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_BIND_COUNT, (*C.OCIError)(s.c.err))
 	if r.rv != C.OCI_SUCCESS {
 		log.Println("NumInput:", ociGetError(s.c.err))
 		return -1
@@ -835,7 +839,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	defer freeBoundParameters(fbp)
 
 	iter := C.ub4(1)
-	if retUb2 := C.OCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_STMT_TYPE, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
+	if retUb2 := C.WrapOCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_STMT_TYPE, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
 		return nil, ociGetError(s.c.err)
 	} else if retUb2.num == C.OCI_STMT_SELECT {
 		iter = 0
@@ -873,7 +877,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	}
 
 	var rc int
-	if retUb2 := C.OCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_PARAM_COUNT, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
+	if retUb2 := C.WrapOCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_PARAM_COUNT, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
 		return nil, ociGetError(s.c.err)
 	} else {
 		rc = int(retUb2.num)
@@ -891,19 +895,19 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			p = rp.ptr
 		}
 
-		if tpr := C.OCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_TYPE, (*C.OCIError)(s.c.err)); tpr.rv != C.OCI_SUCCESS {
+		if tpr := C.WrapOCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_TYPE, (*C.OCIError)(s.c.err)); tpr.rv != C.OCI_SUCCESS {
 			return nil, ociGetError(s.c.err)
 		} else {
 			tp = tpr.num
 		}
 
-		if nsr := C.OCIAttrGetString(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_NAME, (*C.OCIError)(s.c.err)); nsr.rv != C.OCI_SUCCESS {
+		if nsr := C.WrapOCIAttrGetString(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_NAME, (*C.OCIError)(s.c.err)); nsr.rv != C.OCI_SUCCESS {
 			return nil, ociGetError(s.c.err)
 		} else {
 			oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(nsr.ptr))[0:int(nsr.size)])
 		}
 
-		if lpr := C.OCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_SIZE, (*C.OCIError)(s.c.err)); lpr.rv != C.OCI_SUCCESS {
+		if lpr := C.WrapOCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_SIZE, (*C.OCIError)(s.c.err)); lpr.rv != C.OCI_SUCCESS {
 			return nil, ociGetError(s.c.err)
 		} else {
 			lp = lpr.num
@@ -1054,7 +1058,7 @@ func (s *OCI8Stmt)  lastInsertId() (int64, error) {
 }
 */
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
-	retUb4 := C.OCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
+	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(s.c.err)
 	}
