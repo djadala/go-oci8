@@ -288,7 +288,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net"
 	"net/url"
@@ -297,6 +296,7 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+	"log"
 )
 
 const blobBufSize = 4000
@@ -400,14 +400,18 @@ break_loop:
 		return nil, fmt.Errorf("Invalid DSN: %v", err)
 	}
 	dsn.Port = nport
-	dsn.SID = strings.Trim(u.Path, "/")
+	if u.Path != "" {
+		dsn.SID = strings.Trim(u.Path, "/")
+	} else if u.Host != "" {
+		dsn.SID = u.Host
+	}
 
 	for k, v := range u.Query() {
 		switch k {
 		case "loc":
 			if len(v) > 0 {
 				if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
-					return nil, fmt.Errorf("Invalid DSN: %v", err)
+					return nil, fmt.Errorf("Invalid loc: %v: %v", v[0], err)
 				}
 			}
 		case "isolation":
@@ -419,9 +423,10 @@ break_loop:
 			case "DEFAULT":
 				dsn.transactionMode = C.OCI_TRANS_READWRITE
 			default:
-				log.Println("unknow isolation_level", v[0])
+				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
 			}
 		}
+
 	}
 	return dsn, nil
 }
