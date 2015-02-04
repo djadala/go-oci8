@@ -509,7 +509,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
 		0); rv.rv != C.OCI_SUCCESS {
-		//here  conn.err=nil, error handle not yet allocated, we cant string error from oracle
+		//here  conn.err=nil, error handle not yet allocated, we can't get string error from oracle
 		return nil, errors.New("cant OCIEnvCreate") 
 	} else {
 		conn.env = rv.ptr
