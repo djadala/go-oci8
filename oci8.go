@@ -509,7 +509,8 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
 		0); rv.rv != C.OCI_SUCCESS {
-		return nil, errors.New("cant OCIEnvCreate")
+		//here  conn.err=nil, error handle not yet allocated, we cant string error from oracle
+		return nil, errors.New("cant OCIEnvCreate") 
 	} else {
 		conn.env = rv.ptr
 	}
@@ -1260,7 +1261,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				v |= uint32(buf[1]) << 16
 				v |= uint32(buf[0]) << 24
 
-				//SOME ORACLE SHIT ?
+				//Don't know why bits are inverted this way, but it works
 				if buf[0]&0x80 == 0 {
 					v ^= 0xffffffff
 				} else {
@@ -1277,7 +1278,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				v |= uint64(buf[1]) << 48
 				v |= uint64(buf[0]) << 56
 
-				//SOME ORACLE SHIT ?
+				//Don't know why bits are inverted this way, but it works
 				if buf[0]&0x80 == 0 {
 					v ^= 0xffffffffffffffff
 				} else {
