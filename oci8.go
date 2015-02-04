@@ -288,6 +288,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"net/url"
@@ -296,7 +297,6 @@ import (
 	"strings"
 	"time"
 	"unsafe"
-	"log"
 )
 
 const blobBufSize = 4000
@@ -510,7 +510,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		C.OCI_DEFAULT|C.OCI_THREADED,
 		0); rv.rv != C.OCI_SUCCESS {
 		//here  conn.err=nil, error handle not yet allocated, we can't get string error from oracle
-		return nil, errors.New("cant OCIEnvCreate") 
+		return nil, errors.New("cant OCIEnvCreate")
 	} else {
 		conn.env = rv.ptr
 	}
