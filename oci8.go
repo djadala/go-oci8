@@ -1261,7 +1261,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				v |= uint32(buf[1]) << 16
 				v |= uint32(buf[0]) << 24
 
-				//Don't know why bits are inverted this way, but it works
+				//Don't know why bits are inverted that way, but it works
 				if buf[0]&0x80 == 0 {
 					v ^= 0xffffffff
 				} else {
@@ -1278,7 +1278,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				v |= uint64(buf[1]) << 48
 				v |= uint64(buf[0]) << 56
 
-				//Don't know why bits are inverted this way, but it works
+				//Don't know why bits are inverted that way, but it works
 				if buf[0]&0x80 == 0 {
 					v ^= 0xffffffffffffffff
 				} else {
