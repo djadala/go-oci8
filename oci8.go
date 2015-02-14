@@ -1150,7 +1150,7 @@ func (rc *OCI8Rows) Close() error {
 			C.free(col.pbuf)
 		}
 	}
-	return rc.s.Close()
+	return nil//rc.s.Close()
 }
 
 func (rc *OCI8Rows) Columns() []string {
