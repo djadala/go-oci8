@@ -1211,6 +1211,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			b := (*[1 << 30]byte)(ptmp)[0:blobBufSize]
 			var buf []byte
 		again:
+			*bamt = 0
 			rv = C.OCILobRead(
 				(*C.OCISvcCtx)(rc.s.c.svc),
 				(*C.OCIError)(rc.s.c.err),
