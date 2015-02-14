@@ -354,19 +354,19 @@ func (vs Values) Get(k string) (v interface{}) {
 // 2 'isolation' =READONLY,SERIALIZABLE,DEFAULT
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
 	rs := []byte(dsnString)
-break_loop:
-	for i, r := range rs {
-		if r == '/' {
-			rs[i] = ':'
-			dsnString = string(rs)
-			break break_loop
-		}
-		if r == '@' {
-			break break_loop
-		}
-	}
 
 	if !strings.HasPrefix(dsnString, "oracle://") {
+	break_loop:
+		for i, r := range rs {
+			if r == '/' {
+				rs[i] = ':'
+				dsnString = string(rs)
+				break break_loop
+			}
+			if r == '@' {
+				break break_loop
+			}
+		}
 		dsnString = "oracle://" + dsnString
 	}
 	u, err := url.Parse(dsnString)
@@ -390,9 +390,9 @@ break_loop:
 	host, port, err := net.SplitHostPort(u.Host)
 	if err != nil {
 		if err.Error() == "missing port in address" {
-			return nil, fmt.Errorf("Invalid DSN: %v", err)
+			return nil, fmt.Errorf("Invalid DSN: %q %v", dsnString, err)
 		}
-		port = "0"
+		port = "1521"
 	}
 	dsn.Host = host
 	nport, err := strconv.Atoi(port)
@@ -460,7 +460,7 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 			c.env,
 			C.OCI_HTYPE_TRANS,
 			0); rv.rv != C.OCI_SUCCESS {
-			return nil, errors.New("cant  allocate  handle")
+			return nil, errors.New("can't allocate handle")
 		} else {
 			th = rv.ptr
 		}
@@ -508,7 +508,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 
 	if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
-		0); rv.rv != C.OCI_SUCCESS {
+		0); rv.rv != C.OCI_SUCCESS && rv.rv != C.OCI_SUCCESS_WITH_INFO {
 		// TODO: error handle not yet allocated, we can't get string error from oracle
 		return nil, errors.New("can't OCIEnvCreate")
 	} else {
@@ -1207,6 +1207,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		case C.SQLT_BLOB, C.SQLT_CLOB:
 			ptmp := unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			bamt := (*C.ub4)(ptmp)
+			*bamt = 0
 			ptmp = unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(C.ub4(0)) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			b := (*[1 << 30]byte)(ptmp)[0:blobBufSize]
 			var buf []byte

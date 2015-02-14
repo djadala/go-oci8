@@ -32,6 +32,9 @@ func init() {
 
 	var err error
 	dsn := os.Getenv("DSN")
+	if dsn == "" {
+		dsn = "scott/tiger@XE"
+	}
 
 	db, err = sql.Open("oci8", dsn)
 	if err != nil {
@@ -637,16 +640,7 @@ func TestQueryRowPrepared(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Println(ccc)
-
-	/*
-	    ccc := 142
-	    r := db.QueryRow( "select :1 from dual",  ccc)
-	    err := r.Scan( &ccc)
-	    if err != nil {
-			t.Fatal( err)
-		}
-	    fmt.Println( ccc)
-	*/
+    sel.Close()
 }
 
 //watch mem in top :)    I wish valgrind can run go progs...
