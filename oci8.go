@@ -389,7 +389,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 	}
 	host, port, err := net.SplitHostPort(u.Host)
 	if err != nil {
-		if err.Error() == "missing port in address" {
+		if !strings.Contains(err.Error(), "missing port in address") {
 			return nil, fmt.Errorf("Invalid DSN: %q %v", dsnString, err)
 		}
 		port = "1521"
@@ -564,9 +564,17 @@ func (c *OCI8Conn) Close() error {
 		log.Println(err)
 	}
 
-	C.OCIHandleFree(
+	if rv := C.OCIHandleFree(
 		c.env,
-		C.OCI_HTYPE_ENV)
+		C.OCI_HTYPE_ENV); rv != C.OCI_SUCCESS {
+		log.Println(ociGetError(c.err))
+	}
+
+	if rv := C.OCIHandleFree(
+		c.err,
+		C.OCI_HTYPE_ERROR); rv != C.OCI_SUCCESS {
+		log.Println(ociGetError(c.err))
+	}
 
 	c.svc = nil
 	c.env = nil
@@ -613,6 +621,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 
 func (s *OCI8Stmt) Close() error {
 	if s.closed {
+		log.Println("close on closed stmt")
 		return nil
 	}
 	s.closed = true
@@ -658,7 +667,7 @@ func freeBoundParameters(boundParameters []oci8bind) {
 }
 
 func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err error) {
-	if args == nil {
+	if len(args) == 0 {
 		return nil, nil
 	}
 
@@ -1038,19 +1047,17 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	return &OCI8Rows{s, oci8cols, false}, nil
 }
 
-/*
-
 // OCI_ATTR_ROWID must be get in handle -> alloc
 // can be coverted to char, but not to int64
 
-func (s *OCI8Stmt)  lastInsertId() (int64, error) {
-	retUb4 := C.OCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
+func (s *OCI8Stmt) lastInsertId() (int64, error) {
+	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
 		return 0, ociGetError(s.c.err)
 	}
 	return int64(retUb4.num), nil
 }
-*/
+
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
 	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
@@ -1150,7 +1157,7 @@ func (rc *OCI8Rows) Close() error {
 			C.free(col.pbuf)
 		}
 	}
-	return nil//rc.s.Close()
+	return nil
 }
 
 func (rc *OCI8Rows) Columns() []string {
@@ -1207,7 +1214,6 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		case C.SQLT_BLOB, C.SQLT_CLOB:
 			ptmp := unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			bamt := (*C.ub4)(ptmp)
-			*bamt = 0
 			ptmp = unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(C.ub4(0)) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			b := (*[1 << 30]byte)(ptmp)[0:blobBufSize]
 			var buf []byte
@@ -1381,6 +1387,19 @@ func ociGetError(err unsafe.Pointer) error {
 		C.OCI_HTYPE_ERROR)
 	s := C.GoString(&errbuff[0])
 	return errors.New(s)
+}
+
+func ociGetError2(rv C.sword, err unsafe.Pointer) error {
+	switch rv {
+	case C.OCI_INVALID_HANDLE:
+		return errors.New("OCI_INVALID_HANDLE")
+	case C.OCI_SUCCESS:
+		log.Fatal("ociGetError called with no error")
+	case C.OCI_ERROR:
+		return ociGetError(err)
+		// OCI_SUCCESS_WITH_INFO   OCI_RESERVED_FOR_INT_USE  OCI_NO_DATA  OCI_NEED_DATA  OCI_STILL_EXECUTING
+	}
+	return errors.New("")
 }
 
 func parseEnviron(env []string) (out map[string]interface{}) {

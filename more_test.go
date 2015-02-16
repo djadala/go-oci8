@@ -640,7 +640,7 @@ func TestQueryRowPrepared(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Println(ccc)
-    sel.Close()
+	sel.Close()
 }
 
 //watch mem in top :)    I wish valgrind can run go progs...
@@ -683,5 +683,6 @@ func zzTestMem(t *testing.T) {
 		TestTimestamp(t)
 		TestTimestampTz(t)
 		TestTimestampLtz(t)
+		TestQueryRowPrepared(t)
 	}
 }
