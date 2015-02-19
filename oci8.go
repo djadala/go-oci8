@@ -362,8 +362,13 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		token := reDSN.FindStringSubmatch(dsnString)
 		if len(token) == 6 {
 			host := token[3]
+			path := token[4]
 			if len(host) > 0 {
 				host = host[1:]
+				if path == "" {
+					path = host
+					host = ""
+				}
 			}
 			query := token[5]
 			if len(query) > 0 {
@@ -373,7 +378,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 				Scheme:   "oracle",
 				User:     url.UserPassword(token[1], token[2]),
 				Host:     host,
-				Path:     token[4],
+				Path:     path,
 				RawQuery: query,
 			}
 		} else {
