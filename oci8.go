@@ -85,30 +85,6 @@ typedef struct {
   sword rv;
 } ret1ptr;
 
-
-static ret1ptr //returned rowid must be freed with oci decriptor free
-WrapOCIAttrGetRowid(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
-  ret1ptr vvv = {NULL, 0};
-   
-  vvv.rv = OCIDescriptorAlloc (ss, &vvv.ptr, aType, (size_t) 0, (dvoid **) 0); 
-   
-  if (vvv.rv != OCI_SUCCESS) {
-    vvv.rv = -1234;
-    return vvv;
-  }
- 
-  vvv.rv = OCIAttrGet(
-    ss,
-    hType,
-    &vvv.ptr,
-    0,
-    aType,
-    err);
-  return vvv;  
-}
-
-
-
 typedef struct {
   dvoid *ptr;
   dvoid *extra;
@@ -1143,6 +1119,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 // can be converted to char, but not to int64
 
 func (s *OCI8Stmt) lastInsertId() (int64, error) {
+	/*
     log.Println("**************************************************************************************")
     var rowid unsafe.Pointer
     
@@ -1157,6 +1134,7 @@ func (s *OCI8Stmt) lastInsertId() (int64, error) {
 	log.Println( rowid)
 	
     freeDecriptor( rowid, C.OCI_DTYPE_ROWID)
+    */ 
 	return int64(0), nil
 }
 
@@ -1172,14 +1150,14 @@ type OCI8Result struct {
 	n    int64
 	errn error
 
-	id    int64
-	ei  error
+	//id    int64
+	//ei  error
 
 }
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	//return 0, errors.New("no LastInsertId available")
-	return r.id, r.ei
+	return 0, errors.New("no LastInsertId available")
+	//return r.id, r.ei
 }
 
 func (r *OCI8Result) RowsAffected() (int64, error) {
@@ -1215,9 +1193,9 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 		return nil, ociGetError(rv, s.c.err)
 	}
 	n, en := s.rowsAffected()
-	id, ei := s.lastInsertId()
-	//return &OCI8Result{n: n, errn: en}, nil
-	return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
+	//id, ei := s.lastInsertId()
+	return &OCI8Result{n: n, errn: en}, nil
+	//return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
 }
 
 type oci8col struct {
