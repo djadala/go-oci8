@@ -1,0 +1,1 @@
+( . oracle.sh ;DSN='acs/acs2datamax@(description= (address_list= (address= (protocol=tcp) (host=192.168.51.19) (port=1521))) (connect_data=(sid=RUBANK)))'  go test local/mattn/go-oci8)

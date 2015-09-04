@@ -356,8 +356,15 @@ func (vs Values) Get(k string) (v interface{}) {
 // Oracle,
 // 2 'isolation' =READONLY,SERIALIZABLE,DEFAULT
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
-	var u *url.URL
+	dsn, err = ParseDSN1(dsnString )
+    log.Println( dsn, err)
+    return
+    
+}
 
+func ParseDSN1(dsnString string) (dsn *DSN, err error) {
+	var u *url.URL
+    
 	if !strings.HasPrefix(dsnString, "oracle://") {
 		token := reDSN.FindStringSubmatch(dsnString)
 		if len(token) == 6 {
@@ -413,6 +420,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		if !strings.Contains(err.Error(), "missing port in address") {
 			return nil, fmt.Errorf("Invalid DSN: %q %v", dsnString, err)
 		}
+		host = u.Host
 		port = "1521"
 	}
 	dsn.Host = host
@@ -421,6 +429,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		return nil, fmt.Errorf("Invalid DSN: %v", err)
 	}
 	dsn.Port = nport
+	log.Printf("%#v\n",u )
 	if u.Path != "" {
 		dsn.SID = strings.Trim(u.Path, "/")
 	} else if u.Host != "" {
@@ -752,7 +761,12 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				boundParameters = append(boundParameters, oci8bind{dty, pt})
 
 			}
-			for first := true; ; first = false {
+			
+			
+			
+				
+				tryagain := false
+				
 				copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
 				rv := C.OCIDateTimeConstruct(
 					s.c.env,
@@ -769,10 +783,24 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					C.size_t(len(zone)),
 				)
 				if rv != C.OCI_SUCCESS {
-					if !first {
-						defer freeBoundParameters(boundParameters)
+					tryagain = true
+				} else {
+					//check if oracle timezone offset is same ?
+					rvz := C.WrapOCIDateTimeGetTimeZoneNameOffset(
+						(*C.OCIEnv)(s.c.env),
+						(*C.OCIError)(s.c.err),
+						(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)))
+					if rvz.rv != C.OCI_SUCCESS {
 						return nil, ociGetError(s.c.err)
 					}
+					if offset != int(rvz.h)*60*60+int(rvz.m)*60  {
+						log.Println( "oracle timezone offset dont match", zone, offset, int(rvz.h)*60*60+int(rvz.m)*60)
+						tryagain = true
+					}
+				}
+			
+			
+                if tryagain {
 					sign := '+'
 					if offset < 0 {
 						offset = -offset
@@ -781,10 +809,29 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					offset /= 60
 					// oracle accept zones "[+-]hh:mm", try second time
 					zone = fmt.Sprintf("%c%02d:%02d", sign, offset/60, offset%60)
-				} else {
-					break
+
+					copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
+					rv := C.OCIDateTimeConstruct(
+						s.c.env,
+						(*C.OCIError)(s.c.err),
+						(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
+						C.sb2(now.Year()),
+						C.ub1(now.Month()),
+						C.ub1(now.Day()),
+						C.ub1(now.Hour()),
+						C.ub1(now.Minute()),
+						C.ub1(now.Second()),
+						C.ub4(now.Nanosecond()),
+						(*C.OraText)(zp),
+						C.size_t(len(zone)),
+					)
+					if rv != C.OCI_SUCCESS {
+						defer freeBoundParameters(boundParameters)
+						return nil, ociGetError(s.c.err)
+					}
 				}
-			}
+
+			
 
 			cdata = (*C.char)(pt)
 

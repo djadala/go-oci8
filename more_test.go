@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"log"
 )
 
 type dbc interface {
@@ -649,8 +650,10 @@ func TestTimeZones(t *testing.T) {
 		z1 := loc.String() // for me z0 is always == z1
 
 		if err != nil {
+			log.Println( "skip location", z0)
 			continue
 		}
+		
 		tt := time.Date(2015, 12, 31, 23, 59, 59, 123456789, loc)
 		z2, _ := tt.Zone() // sometimes z1 != z2 e.g. EST5EDT v.s. EDT
 
@@ -672,7 +675,7 @@ func TestTimeZones(t *testing.T) {
 func handleZone(zone string, tt *time.Time, db *sql.DB, t *testing.T) {
 	r := sqlstest(db, t, "select :0 as time from dual", *tt)
 	if !tt.Equal(r["TIME"].(time.Time)) {
-		t.Fatal(r, "!=", tt)
+		t.Fatal(r["TIME"].(time.Time), "!=", tt)
 	}
 }
 
