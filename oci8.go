@@ -85,6 +85,30 @@ typedef struct {
   sword rv;
 } ret1ptr;
 
+
+static ret1ptr //returned rowid must be freed with oci decriptor free
+WrapOCIAttrGetRowid(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
+  ret1ptr vvv = {NULL, 0};
+   
+  vvv.rv = OCIDescriptorAlloc (ss, &vvv.ptr, aType, (size_t) 0, (dvoid **) 0); 
+   
+  if (vvv.rv != OCI_SUCCESS) {
+    vvv.rv = -1234;
+    return vvv;
+  }
+ 
+  vvv.rv = OCIAttrGet(
+    ss,
+    hType,
+    &vvv.ptr,
+    0,
+    aType,
+    err);
+  return vvv;  
+}
+
+
+
 typedef struct {
   dvoid *ptr;
   dvoid *extra;
@@ -117,7 +141,7 @@ WrapOCIDescriptorAlloc(dvoid *env, ub4 type, size_t extra) {
     &vvv.ptr,
     type,
     extra,
-    &vvv.extra);
+    ptr); //&vvv.extra
   return vvv;
 }
 
@@ -467,7 +491,7 @@ func (tx *OCI8Tx) Commit() error {
 		(*C.OCISvcCtx)(tx.c.svc),
 		(*C.OCIError)(tx.c.err),
 		0); rv != C.OCI_SUCCESS {
-		return ociGetError(tx.c.err)
+		return ociGetError(rv, tx.c.err)
 	}
 	return nil
 }
@@ -478,7 +502,7 @@ func (tx *OCI8Tx) Rollback() error {
 		(*C.OCISvcCtx)(tx.c.svc),
 		(*C.OCIError)(tx.c.err),
 		0); rv != C.OCI_SUCCESS {
-		return ociGetError(tx.c.err)
+		return ociGetError(rv, tx.c.err)
 	}
 	return nil
 }
@@ -501,7 +525,7 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 			0,
 			C.OCI_ATTR_TRANS,
 			(*C.OCIError)(c.err)); rv != C.OCI_SUCCESS {
-			return nil, ociGetError(c.err)
+			return nil, ociGetError(rv, c.err)
 		}
 
 		if rv := C.OCITransStart(
@@ -510,7 +534,7 @@ func (c *OCI8Conn) Begin() (driver.Tx, error) {
 			0,
 			c.transactionMode); // C.OCI_TRANS_SERIALIZABLE C.OCI_TRANS_READWRITE C.OCI_TRANS_READONLY
 		rv != C.OCI_SUCCESS {
-			return nil, ociGetError(c.err)
+			return nil, ociGetError(rv, c.err)
 		}
 	}
 	c.inTransaction = true
@@ -576,7 +600,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		C.ub4(len(dsn.Password)),
 		(*C.OraText)(unsafe.Pointer(phost)),
 		C.ub4(len(host))); rv.rv != C.OCI_SUCCESS {
-		return nil, ociGetError(conn.err)
+		return nil, ociGetError(rv.rv, conn.err)
 	} else {
 		conn.svc = rv.ptr
 	}
@@ -590,20 +614,20 @@ func (c *OCI8Conn) Close() error {
 	if rv := C.OCILogoff(
 		(*C.OCISvcCtx)(c.svc),
 		(*C.OCIError)(c.err)); rv != C.OCI_SUCCESS {
-		err = ociGetError(c.err)
+		err = ociGetError(rv, c.err)
 		log.Println(err)
 	}
 
 	if rv := C.OCIHandleFree(
 		c.env,
 		C.OCI_HTYPE_ENV); rv != C.OCI_SUCCESS {
-		log.Println(ociGetError(c.err))
+		log.Println(ociGetError(rv, c.err))
 	}
 
 	if rv := C.OCIHandleFree(
 		c.err,
 		C.OCI_HTYPE_ERROR); rv != C.OCI_SUCCESS {
-		log.Println(ociGetError(c.err))
+		log.Println(ociGetError(rv, c.err))
 	}
 
 	c.svc = nil
@@ -629,7 +653,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 		c.env,
 		C.OCI_HTYPE_STMT,
 		(C.size_t)(unsafe.Sizeof(bp)*2)); rv.rv != C.OCI_SUCCESS {
-		return nil, ociGetError(c.err)
+		return nil, ociGetError(rv.rv, c.err)
 	} else {
 		s = rv.ptr
 		bp = rv.extra
@@ -643,7 +667,7 @@ func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
 		C.ub4(C.strlen(pquery)),
 		C.ub4(C.OCI_NTV_SYNTAX),
 		C.ub4(C.OCI_DEFAULT)); rv != C.OCI_SUCCESS {
-		return nil, ociGetError(c.err)
+		return nil, ociGetError(rv, c.err)
 	}
 
 	return &OCI8Stmt{c: c, s: s, bp: (**C.OCIBind)(bp), defp: (**C.OCIDefine)(defp)}, nil
@@ -667,7 +691,7 @@ func (s *OCI8Stmt) Close() error {
 func (s *OCI8Stmt) NumInput() int {
 	r := C.WrapOCIAttrGetInt(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_BIND_COUNT, (*C.OCIError)(s.c.err))
 	if r.rv != C.OCI_SUCCESS {
-		log.Println("NumInput:", ociGetError(s.c.err))
+		log.Println("NumInput:", ociGetError(r.rv, s.c.err))
 		return -1
 	}
 	return int(r.num)
@@ -751,7 +775,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				C.OCI_DTYPE_TIMESTAMP_TZ,
 				C.size_t(size)); ret.rv != C.OCI_SUCCESS {
 				defer freeBoundParameters(boundParameters)
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 				dty = C.SQLT_TIMESTAMP_TZ
 				clen = C.sb4(unsafe.Sizeof(pt))
@@ -765,8 +789,51 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			
 			
 				
-				tryagain := false
-				
+			tryagain := false
+			
+			copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
+			rv := C.OCIDateTimeConstruct(
+				s.c.env,
+				(*C.OCIError)(s.c.err),
+				(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
+				C.sb2(now.Year()),
+				C.ub1(now.Month()),
+				C.ub1(now.Day()),
+				C.ub1(now.Hour()),
+				C.ub1(now.Minute()),
+				C.ub1(now.Second()),
+				C.ub4(now.Nanosecond()),
+				(*C.OraText)(zp),
+				C.size_t(len(zone)),
+			)
+			if rv != C.OCI_SUCCESS {
+				tryagain = true
+			} else {
+				//check if oracle timezone offset is same ?
+				rvz := C.WrapOCIDateTimeGetTimeZoneNameOffset(
+					(*C.OCIEnv)(s.c.env),
+					(*C.OCIError)(s.c.err),
+					(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)))
+				if rvz.rv != C.OCI_SUCCESS {
+					return nil, ociGetError(rvz.rv, s.c.err)
+				}
+				if offset != int(rvz.h)*60*60+int(rvz.m)*60  {
+					log.Println( "oracle timezone offset dont match", zone, offset, int(rvz.h)*60*60+int(rvz.m)*60)
+					tryagain = true
+				}
+			}
+		
+		
+			if tryagain {
+				sign := '+'
+				if offset < 0 {
+					offset = -offset
+					sign = '-'
+				}
+				offset /= 60
+				// oracle accept zones "[+-]hh:mm", try second time
+				zone = fmt.Sprintf("%c%02d:%02d", sign, offset/60, offset%60)
+
 				copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
 				rv := C.OCIDateTimeConstruct(
 					s.c.env,
@@ -783,53 +850,10 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					C.size_t(len(zone)),
 				)
 				if rv != C.OCI_SUCCESS {
-					tryagain = true
-				} else {
-					//check if oracle timezone offset is same ?
-					rvz := C.WrapOCIDateTimeGetTimeZoneNameOffset(
-						(*C.OCIEnv)(s.c.env),
-						(*C.OCIError)(s.c.err),
-						(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)))
-					if rvz.rv != C.OCI_SUCCESS {
-						return nil, ociGetError(s.c.err)
-					}
-					if offset != int(rvz.h)*60*60+int(rvz.m)*60  {
-						log.Println( "oracle timezone offset dont match", zone, offset, int(rvz.h)*60*60+int(rvz.m)*60)
-						tryagain = true
-					}
+					defer freeBoundParameters(boundParameters)
+					return nil, ociGetError(rv, s.c.err)
 				}
-			
-			
-                if tryagain {
-					sign := '+'
-					if offset < 0 {
-						offset = -offset
-						sign = '-'
-					}
-					offset /= 60
-					// oracle accept zones "[+-]hh:mm", try second time
-					zone = fmt.Sprintf("%c%02d:%02d", sign, offset/60, offset%60)
-
-					copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
-					rv := C.OCIDateTimeConstruct(
-						s.c.env,
-						(*C.OCIError)(s.c.err),
-						(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
-						C.sb2(now.Year()),
-						C.ub1(now.Month()),
-						C.ub1(now.Day()),
-						C.ub1(now.Hour()),
-						C.ub1(now.Minute()),
-						C.ub1(now.Second()),
-						C.ub4(now.Nanosecond()),
-						(*C.OraText)(zp),
-						C.size_t(len(zone)),
-					)
-					if rv != C.OCI_SUCCESS {
-						defer freeBoundParameters(boundParameters)
-						return nil, ociGetError(s.c.err)
-					}
-				}
+			}
 
 			
 
@@ -892,7 +916,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			nil,
 			C.OCI_DEFAULT); rv != C.OCI_SUCCESS {
 			defer freeBoundParameters(boundParameters)
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(rv, s.c.err)
 		}
 	}
 	return boundParameters, nil
@@ -911,7 +935,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 	iter := C.ub4(1)
 	if retUb2 := C.WrapOCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_STMT_TYPE, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
-		return nil, ociGetError(s.c.err)
+		return nil, ociGetError(retUb2.rv, s.c.err)
 	} else if retUb2.num == C.OCI_STMT_SELECT {
 		iter = 0
 	}
@@ -919,7 +943,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	// set the row prefetch.  Only one extra row per fetch will be returned unless this is set.
 	if prefetch_size := C.ub4(s.c.attrs.Get("prefetch_rows").(int)); prefetch_size > 0 {
 		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, prefetch_size, C.OCI_ATTR_PREFETCH_ROWS, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(rv, s.c.err)
 		}
 	}
 
@@ -927,7 +951,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	// useful for memory constrained systems
 	if prefetch_memory := C.ub4(s.c.attrs.Get("prefetch_memory").(int64)); prefetch_memory > 0 {
 		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, prefetch_memory, C.OCI_ATTR_PREFETCH_MEMORY, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(rv, s.c.err)
 		}
 	}
 
@@ -944,12 +968,12 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		nil,
 		nil,
 		mode); rv != C.OCI_SUCCESS {
-		return nil, ociGetError(s.c.err)
+		return nil, ociGetError(rv, s.c.err)
 	}
 
 	var rc int
 	if retUb2 := C.WrapOCIAttrGetUb2(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_PARAM_COUNT, (*C.OCIError)(s.c.err)); retUb2.rv != C.OCI_SUCCESS {
-		return nil, ociGetError(s.c.err)
+		return nil, ociGetError(retUb2.rv, s.c.err)
 	} else {
 		rc = int(retUb2.num)
 	}
@@ -961,25 +985,25 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 		var lp C.ub2
 
 		if rp := C.WrapOCIParamGet(s.s, C.OCI_HTYPE_STMT, (*C.OCIError)(s.c.err), C.ub4(i+1)); rp.rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(rp.rv, s.c.err)
 		} else {
 			p = rp.ptr
 		}
 
 		if tpr := C.WrapOCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_TYPE, (*C.OCIError)(s.c.err)); tpr.rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(tpr.rv, s.c.err)
 		} else {
 			tp = tpr.num
 		}
 
 		if nsr := C.WrapOCIAttrGetString(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_NAME, (*C.OCIError)(s.c.err)); nsr.rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(nsr.rv, s.c.err)
 		} else {
 			oci8cols[i].name = string((*[1 << 30]byte)(unsafe.Pointer(nsr.ptr))[0:int(nsr.size)])
 		}
 
 		if lpr := C.WrapOCIAttrGetUb2(p, C.OCI_DTYPE_PARAM, C.OCI_ATTR_DATA_SIZE, (*C.OCIError)(s.c.err)); lpr.rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(lpr.rv, s.c.err)
 		} else {
 			lp = lpr.num
 		}
@@ -1022,7 +1046,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 				size += oci8cols[i].size
 			}
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_LOB, C.size_t(size)); ret.rv != C.OCI_SUCCESS {
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 
 				oci8cols[i].kind = tp
@@ -1042,7 +1066,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		case C.SQLT_TIMESTAMP, C.SQLT_DAT:
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_TIMESTAMP, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 
 				oci8cols[i].kind = C.SQLT_TIMESTAMP
@@ -1053,7 +1077,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		case C.SQLT_TIMESTAMP_TZ, C.SQLT_TIMESTAMP_LTZ:
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_TIMESTAMP_TZ, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 
 				oci8cols[i].kind = C.SQLT_TIMESTAMP_TZ
@@ -1064,7 +1088,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		case C.SQLT_INTERVAL_DS:
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_INTERVAL_DS, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 
 				oci8cols[i].kind = C.SQLT_INTERVAL_DS
@@ -1075,7 +1099,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		case C.SQLT_INTERVAL_YM:
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_INTERVAL_YM, C.size_t(unsafe.Sizeof(unsafe.Pointer(nil)))); ret.rv != C.OCI_SUCCESS {
-				return nil, ociGetError(s.c.err)
+				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 
 				oci8cols[i].kind = C.SQLT_INTERVAL_YM
@@ -1109,27 +1133,37 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			&oci8cols[i].rlen,
 			nil,
 			C.OCI_DEFAULT); rv != C.OCI_SUCCESS {
-			return nil, ociGetError(s.c.err)
+			return nil, ociGetError(rv, s.c.err)
 		}
 	}
 	return &OCI8Rows{s, oci8cols, false}, nil
 }
 
 // OCI_ATTR_ROWID must be get in handle -> alloc
-// can be coverted to char, but not to int64
+// can be converted to char, but not to int64
 
 func (s *OCI8Stmt) lastInsertId() (int64, error) {
-	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
-	if retUb4.rv != C.OCI_SUCCESS {
-		return 0, ociGetError(s.c.err)
+    log.Println("**************************************************************************************")
+    var rowid unsafe.Pointer
+    
+	retR := C.WrapOCIAttrGetRowid(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
+	if retR.rv != C.OCI_SUCCESS {
+		log.Println( ociGetError(retR.rv, s.c.err) , retR.rv)
+		return 0, ociGetError(retR.rv, s.c.err)
+	} else {
+		rowid = retR.ptr
 	}
-	return int64(retUb4.num), nil
+
+	log.Println( rowid)
+	
+    freeDecriptor( rowid, C.OCI_DTYPE_ROWID)
+	return int64(0), nil
 }
 
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
 	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
-		return 0, ociGetError(s.c.err)
+		return 0, ociGetError(retUb4.rv, s.c.err)
 	}
 	return int64(retUb4.num), nil
 }
@@ -1137,10 +1171,15 @@ func (s *OCI8Stmt) rowsAffected() (int64, error) {
 type OCI8Result struct {
 	n    int64
 	errn error
+
+	id    int64
+	ei  error
+
 }
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	return 0, errors.New("no LastInsertId available")
+	//return 0, errors.New("no LastInsertId available")
+	return r.id, r.ei
 }
 
 func (r *OCI8Result) RowsAffected() (int64, error) {
@@ -1173,11 +1212,12 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 		nil,
 		mode)
 	if rv != C.OCI_SUCCESS {
-		return nil, ociGetError(s.c.err)
+		return nil, ociGetError(rv, s.c.err)
 	}
 	n, en := s.rowsAffected()
-	//id, ei := s.lastInsertId()
-	return &OCI8Result{n: n, errn: en}, nil
+	id, ei := s.lastInsertId()
+	//return &OCI8Result{n: n, errn: en}, nil
+	return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
 }
 
 type oci8col struct {
@@ -1249,7 +1289,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		//} else if rv == C.OCI_SUCCESS_WITH_INFO {
 		//	log.Println( "OCI_SUCCESS_WITH_INFO", ociGetError(rc.s.c.err))
 	} else if rv != C.OCI_SUCCESS {
-		err := ociGetError(rc.s.c.err)
+		err := ociGetError(rv, rc.s.c.err)
 		log.Println("OCI_SUCCESS!=", rv, err)
 		return err
 	}
@@ -1304,7 +1344,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				goto again
 			}
 			if rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rv, rc.s.c.err)
 			}
 			if rc.cols[i].kind == C.SQLT_BLOB {
 				dest[i] = append(buf, b[:int(*bamt)]...)
@@ -1371,7 +1411,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				(*C.OCIError)(rc.s.c.err),
 				*(**C.OCIDateTime)(rc.cols[i].pbuf),
 			); rv.rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rv.rv, rc.s.c.err)
 			} else {
 				dest[i] = time.Date(
 					int(rv.y),
@@ -1390,14 +1430,14 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				(*C.OCIError)(rc.s.c.err),
 				tptr)
 			if rv.rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rv.rv, rc.s.c.err)
 			}
 			rvz := C.WrapOCIDateTimeGetTimeZoneNameOffset(
 				(*C.OCIEnv)(rc.s.c.env),
 				(*C.OCIError)(rc.s.c.err),
 				tptr)
 			if rvz.rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rvz.rv, rc.s.c.err)
 			}
 			nnn := C.GoStringN((*C.char)((unsafe.Pointer)(&rvz.zone[0])), C.int(rvz.zlen))
 			loc, err := time.LoadLocation(nnn)
@@ -1421,7 +1461,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				(*C.OCIError)(rc.s.c.err),
 				iptr)
 			if rv.rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rv.rv, rc.s.c.err)
 			}
 			dest[i] = int64(time.Duration(rv.d)*time.Hour*24 + time.Duration(rv.hh)*time.Hour + time.Duration(rv.mm)*time.Minute + time.Duration(rv.ss)*time.Second + time.Duration(rv.ff))
 		case C.SQLT_INTERVAL_YM:
@@ -1431,7 +1471,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				(*C.OCIError)(rc.s.c.err),
 				iptr)
 			if rv.rv != C.OCI_SUCCESS {
-				return ociGetError(rc.s.c.err)
+				return ociGetError(rv.rv, rc.s.c.err)
 			}
 			dest[i] = int64(rv.y)*12 + int64(rv.m)
 		default:
@@ -1442,7 +1482,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 	return nil
 }
 
-func ociGetError(err unsafe.Pointer) error {
+func ociGetErrorS(err unsafe.Pointer) error {
 	var errcode C.sb4
 	var errbuff [512]C.char
 	C.OCIErrorGet(
@@ -1457,17 +1497,26 @@ func ociGetError(err unsafe.Pointer) error {
 	return errors.New(s)
 }
 
-func ociGetError2(rv C.sword, err unsafe.Pointer) error {
+func ociGetError(rv C.sword, err unsafe.Pointer) error {
 	switch rv {
 	case C.OCI_INVALID_HANDLE:
 		return errors.New("OCI_INVALID_HANDLE")
+	case C.OCI_SUCCESS_WITH_INFO:
+		return errors.New("OCI_SUCCESS_WITH_INFO")
+	case C.OCI_RESERVED_FOR_INT_USE:
+		return errors.New("OCI_RESERVED_FOR_INT_USE")
+	case C.OCI_NO_DATA:
+		return errors.New("OCI_NO_DATA")
+	case C.OCI_NEED_DATA:
+		return errors.New("OCI_NEED_DATA")
+	case C.OCI_STILL_EXECUTING:
+		return errors.New("OCI_STILL_EXECUTING")
 	case C.OCI_SUCCESS:
 		log.Fatal("ociGetError called with no error")
 	case C.OCI_ERROR:
-		return ociGetError(err)
-		// OCI_SUCCESS_WITH_INFO   OCI_RESERVED_FOR_INT_USE  OCI_NO_DATA  OCI_NEED_DATA  OCI_STILL_EXECUTING
+		return ociGetErrorS(err)
 	}
-	return errors.New("")
+	return fmt.Errorf("oracle return error code %d", rv)
 }
 
 func parseEnviron(env []string) (out map[string]interface{}) {
