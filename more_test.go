@@ -878,5 +878,6 @@ func zzTestMem(t *testing.T) {
 		TestTimestampTz(t)
 		TestTimestampLtz(t)
 		TestQueryRowPrepared(t)
+		TestTimeZones(t)
 	}
 }
