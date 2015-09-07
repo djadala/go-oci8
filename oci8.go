@@ -325,7 +325,7 @@ type OCI8Conn struct {
 	svc             unsafe.Pointer
 	env             unsafe.Pointer
 	err             unsafe.Pointer
-	attrs           Values
+	attrs           Valuesc
 	location        *time.Location
 	transactionMode C.ub4
 	inTransaction   bool
@@ -335,13 +335,13 @@ type OCI8Tx struct {
 	c *OCI8Conn
 }
 
-type Values map[string]interface{}
+type Valuesc map[string]interface{}
 
-func (vs Values) Set(k string, v interface{}) {
+func (vs Valuesc) Set(k string, v interface{}) {
 	vs[k] = v
 }
 
-func (vs Values) Get(k string) (v interface{}) {
+func (vs Valuesc) Get(k string) (v interface{}) {
 	v, _ = vs[k]
 	return
 }
@@ -353,7 +353,7 @@ func (vs Values) Get(k string) (v interface{}) {
 // Currently the parameters supported is:
 // 1 'loc' which
 // sets the timezone to read times in as and to marshal to when writing times to
-// Oracle,
+// Oracle date,
 // 2 'isolation' =READONLY,SERIALIZABLE,DEFAULT
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
 	dsn, err = ParseDSN1(dsnString )
@@ -362,7 +362,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
     
 }
 
-func ParseDSN1(dsnString string) (dsn *DSN, err error) {
+func ParseDSN3(dsnString string) (dsn *DSN, err error) {
 	var u *url.URL
     
 	if !strings.HasPrefix(dsnString, "oracle://") {
@@ -528,7 +528,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	}
 
 	// set safe defaults
-	conn.attrs = make(Values)
+	conn.attrs = make(Valuesc)
 	conn.attrs.Set("prefetch_rows", 10)
 	conn.attrs.Set("prefetch_memory", int64(0))
 
