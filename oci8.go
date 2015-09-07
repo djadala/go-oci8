@@ -1078,29 +1078,6 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	return &OCI8Rows{s, oci8cols, false}, nil
 }
 
-// OCI_ATTR_ROWID must be get in handle -> alloc
-// can be converted to char, but not to int64
-
-func (s *OCI8Stmt) lastInsertId() (int64, error) {
-	/*
-	    log.Println("**************************************************************************************")
-	    var rowid unsafe.Pointer
-
-		retR := C.WrapOCIAttrGetRowid(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
-		if retR.rv != C.OCI_SUCCESS {
-			log.Println( ociGetError(retR.rv, s.c.err) , retR.rv)
-			return 0, ociGetError(retR.rv, s.c.err)
-		} else {
-			rowid = retR.ptr
-		}
-
-		log.Println( rowid)
-
-	    freeDecriptor( rowid, C.OCI_DTYPE_ROWID)
-	*/
-	return int64(0), nil
-}
-
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
 	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
@@ -1118,8 +1095,10 @@ type OCI8Result struct {
 
 }
 
+var lastInsertIdError = errors.New("no LastInsertId available")
+
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	return 0, errors.New("no LastInsertId available")
+	return 0, lastInsertIdError//errors.New("no LastInsertId available")
 	//return r.id, r.ei
 }
 
