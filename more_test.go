@@ -1,6 +1,6 @@
 package oci8_test
 
-// ( . oracle.sh ;DSN='user/pass@(description=(address_list=(address=(protocol=tcp)(host=192.168.1.1)(port=1521)))(connect_data=(sid=SID)))?isolation=SERIALIZABLE'  go test )
+// ( . oracle.sh ;DSN='user:pass@(description=(address_list=(address=(protocol=tcp)(host=192.168.1.1)(port=1521)))(connect_data=(sid=SID)))?isolation=SERIALIZABLE'  go test )
 
 import (
 	"bytes"
