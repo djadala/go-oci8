@@ -417,19 +417,19 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
 			}
 		case "prefetch_rows":
-			z, err := strconv.ParseInt(v[0], 10, 32)
+			z, err := strconv.ParseUint(v[0], 10, 32)
 			if err != nil {
 				return nil, fmt.Errorf("invalid prefetch_rows", v[0])
 			}
 			dsn.prefetch_rows = uint32(z)
 		case "prefetch_memory":
-			z, err := strconv.ParseInt(v[0], 10, 32)
+			z, err := strconv.ParseUint(v[0], 10, 32)
 			if err != nil {
 				return nil, fmt.Errorf("invalid prefetch_memory", v[0])
 			}
 			dsn.prefetch_memory = uint32(z)
 		default:
-			log.Println("", k)
+			log.Println("unused parameter", k)
 
 		}
 	}
