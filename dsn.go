@@ -398,7 +398,7 @@ func ParseDSN1(dsnString string) (dsn *DSN, err error) {
 		return nil, err
 	}
 	
-	dsn.SID = host
+	dsn.Connect = host
 	
 	qp, err := ParseQuery(params)
 	for k, v := range qp {

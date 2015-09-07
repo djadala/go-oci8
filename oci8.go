@@ -290,8 +290,8 @@ import (
 	"io"
 	"log"
 	"math"
-	"net"
-	"net/url"
+	//"net"
+	//"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -305,11 +305,9 @@ const blobBufSize = 4000
 var reDSN = regexp.MustCompile(`^([^/]+)/([^@]+)(@[^/]+)?([^?]*)(\?.*)?$`)
 
 type DSN struct {
-	Host            string
-	Port            int
+	Connect         string
 	Username        string
 	Password        string
-	SID             string
 	Location        *time.Location
 	transactionMode C.ub4
 }
@@ -362,104 +360,6 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
     
 }
 
-func ParseDSN3(dsnString string) (dsn *DSN, err error) {
-	var u *url.URL
-    
-	if !strings.HasPrefix(dsnString, "oracle://") {
-		token := reDSN.FindStringSubmatch(dsnString)
-		if len(token) == 6 {
-			host := token[3]
-			path := token[4]
-			if len(host) > 0 {
-				host = host[1:]
-				if path == "" {
-					path = host
-					host = ""
-				}
-			}
-			query := token[5]
-			if len(query) > 0 {
-				query = query[1:]
-			}
-			u = &url.URL{
-				Scheme:   "oracle",
-				User:     url.UserPassword(token[1], token[2]),
-				Host:     host,
-				Path:     path,
-				RawQuery: query,
-			}
-		} else {
-			u = &url.URL{
-				Scheme: "oracle",
-				Opaque: dsnString,
-			}
-		}
-	} else {
-		var err error
-		u, err = url.Parse(dsnString)
-		if err != nil {
-			return nil, err
-		}
-	}
-	dsn = &DSN{Location: time.Local}
-
-	if u.User != nil {
-		dsn.Username = u.User.Username()
-		password, ok := u.User.Password()
-		if ok {
-			dsn.Password = password
-		} else {
-			if tok := strings.SplitN(dsn.Username, "/", 2); len(tok) >= 2 {
-				dsn.Username = tok[0]
-				dsn.Password = tok[1]
-			}
-		}
-	}
-	host, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		if !strings.Contains(err.Error(), "missing port in address") {
-			return nil, fmt.Errorf("Invalid DSN: %q %v", dsnString, err)
-		}
-		host = u.Host
-		port = "1521"
-	}
-	dsn.Host = host
-	nport, err := strconv.Atoi(port)
-	if err != nil {
-		return nil, fmt.Errorf("Invalid DSN: %v", err)
-	}
-	dsn.Port = nport
-	log.Printf("%#v\n",u )
-	if u.Path != "" {
-		dsn.SID = strings.Trim(u.Path, "/")
-	} else if u.Host != "" {
-		dsn.SID = u.Host
-	}
-
-	for k, v := range u.Query() {
-		switch k {
-		case "loc":
-			if len(v) > 0 {
-				if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
-					return nil, fmt.Errorf("Invalid loc: %v: %v", v[0], err)
-				}
-			}
-		case "isolation":
-			switch v[0] {
-			case "READONLY":
-				dsn.transactionMode = C.OCI_TRANS_READONLY
-			case "SERIALIZABLE":
-				dsn.transactionMode = C.OCI_TRANS_SERIALIZABLE
-			case "DEFAULT":
-				dsn.transactionMode = C.OCI_TRANS_READWRITE
-			default:
-				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
-			}
-		}
-
-	}
-	return dsn, nil
-}
 
 func (tx *OCI8Tx) Commit() error {
 	tx.c.inTransaction = false
@@ -554,13 +454,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		conn.err = rv.ptr
 	}
 
-	var host string
-	if dsn.Host != "" && dsn.SID != "" {
-		host = fmt.Sprintf("%s:%d/%s", dsn.Host, dsn.Port, dsn.SID)
-	} else {
-		host = dsn.SID
-	}
-	phost := C.CString(host)
+	phost := C.CString(dsn.Connect)
 	defer C.free(unsafe.Pointer(phost))
 	puser := C.CString(dsn.Username)
 	defer C.free(unsafe.Pointer(puser))
@@ -575,7 +469,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		(*C.OraText)(unsafe.Pointer(ppass)),
 		C.ub4(len(dsn.Password)),
 		(*C.OraText)(unsafe.Pointer(phost)),
-		C.ub4(len(host))); rv.rv != C.OCI_SUCCESS {
+		C.ub4(len(dsn.Connect))); rv.rv != C.OCI_SUCCESS {
 		return nil, ociGetError(rv.rv, conn.err)
 	} else {
 		conn.svc = rv.ptr
