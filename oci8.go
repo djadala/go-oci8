@@ -676,22 +676,22 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 		clen  C.sb4
 	)
 	*s.bp = nil
-	for i, v := range args {
+	for i, uv := range args {
 
-		switch v.(type) {
+		switch v := uv.(type) {
 		case nil:
 			dty = C.SQLT_STR
 			cdata = nil
 			clen = 0
 		case []byte:
-			v := v.([]byte)
+			//v := v.([]byte)
 			dty = C.SQLT_BIN
 			cdata = CByte(v)
 			clen = C.sb4(len(v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case float64:
-			fb := math.Float64bits(v.(float64))
+			fb := math.Float64bits(v)
 			if fb&0x8000000000000000 != 0 {
 				fb ^= 0xffffffffffffffff
 			} else {
@@ -707,7 +707,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			var pt unsafe.Pointer
 			var zp unsafe.Pointer
 
-			now := v.(time.Time)
+			now := v//.(time.Time)
 			zone, offset := now.Zone()
 
 			size := len(zone)
@@ -799,13 +799,13 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			cdata = (*C.char)(pt)
 
 		case string:
-			v := v.(string)
+			//v := v.(string)
 			dty = C.SQLT_AFC // don't trim strings !!!
 			cdata = C.CString(v)
 			clen = C.sb4(len(v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		case int64:
-			val := v.(int64)
+			val := v//.(int64)
 			dty = C.SQLT_INT
 			clen = C.sb4(8) // not tested on i386. may only work on amd64
 			cdata = (*C.char)(C.malloc(8))
@@ -824,7 +824,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			dty = C.SQLT_INT
 			clen = C.sb4(1)
 			cdata = (*C.char)(C.malloc(10))
-			if v.(bool) {
+			if v  { //.(bool) {
 				*cdata = 1
 			} else {
 				*cdata = 0
