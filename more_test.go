@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"jambo/sqlrows"
 	_ "local/mattn/go-oci8"
+	"log"
 	"math/rand"
 	"os"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-	"log"
 )
 
 type dbc interface {
@@ -650,10 +650,10 @@ func TestTimeZones(t *testing.T) {
 		z1 := loc.String() // for me z0 is always == z1
 
 		if err != nil {
-			log.Println( "skip location", z0)
+			log.Println("skip location", z0)
 			continue
 		}
-		
+
 		tt := time.Date(2015, 12, 31, 23, 59, 59, 123456789, loc)
 		z2, _ := tt.Zone() // sometimes z1 != z2 e.g. EST5EDT v.s. EDT
 

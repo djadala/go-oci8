@@ -292,7 +292,7 @@ import (
 	"math"
 	//"net"
 	//"net/url"
-	"os"
+	//"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -305,9 +305,13 @@ const blobBufSize = 4000
 var reDSN = regexp.MustCompile(`^([^/]+)/([^@]+)(@[^/]+)?([^?]*)(\?.*)?$`)
 
 type DSN struct {
-	Connect         string
-	Username        string
-	Password        string
+	Connect  string
+	Username string
+	Password string
+
+	prefetch_rows   uint32
+	prefetch_memory uint32
+
 	Location        *time.Location
 	transactionMode C.ub4
 }
@@ -320,10 +324,13 @@ type OCI8Driver struct {
 }
 
 type OCI8Conn struct {
-	svc             unsafe.Pointer
-	env             unsafe.Pointer
-	err             unsafe.Pointer
-	attrs           Valuesc
+	svc unsafe.Pointer
+	env unsafe.Pointer
+	err unsafe.Pointer
+
+	prefetch_rows   uint32
+	prefetch_memory uint32
+
 	location        *time.Location
 	transactionMode C.ub4
 	inTransaction   bool
@@ -333,6 +340,7 @@ type OCI8Tx struct {
 	c *OCI8Conn
 }
 
+/*
 type Valuesc map[string]interface{}
 
 func (vs Valuesc) Set(k string, v interface{}) {
@@ -343,6 +351,7 @@ func (vs Valuesc) Get(k string) (v interface{}) {
 	v, _ = vs[k]
 	return
 }
+*/
 
 // ParseDSN parses a DSN used to connect to Oracle
 // It expects to receive a string in the form:
@@ -353,13 +362,79 @@ func (vs Valuesc) Get(k string) (v interface{}) {
 // sets the timezone to read times in as and to marshal to when writing times to
 // Oracle date,
 // 2 'isolation' =READONLY,SERIALIZABLE,DEFAULT
+// 3 'prefetch_rows'
+// 4 'prefetch_memory'
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
-	dsn, err = ParseDSN1(dsnString )
-    log.Println( dsn, err)
-    return
-    
-}
 
+	dsn = &DSN{Location: time.Local}
+
+	if dsnString == "" {
+		return nil, errors.New("empty dsn")
+	}
+
+	const prefix = "oracle://"
+
+	if strings.HasPrefix(dsnString, prefix) {
+		dsnString = dsnString[len(prefix):]
+	}
+
+	authority, dsnString := split(dsnString, "@", true)
+	if authority != "" {
+		dsn.Username, dsn.Password, err = parseAuthority(authority)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	host, params := split(dsnString, "?", true)
+
+	if host, err = unescape(host, encodePath); err != nil {
+		return nil, err
+	}
+
+	dsn.Connect = host
+	dsn.prefetch_rows = 10
+	dsn.prefetch_memory = 0
+
+	qp, err := ParseQuery(params)
+	for k, v := range qp {
+		switch k {
+		case "loc":
+			if len(v) > 0 {
+				if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
+					return nil, fmt.Errorf("Invalid loc: %v: %v", v[0], err)
+				}
+			}
+		case "isolation":
+			switch v[0] {
+			case "READONLY":
+				dsn.transactionMode = C.OCI_TRANS_READONLY
+			case "SERIALIZABLE":
+				dsn.transactionMode = C.OCI_TRANS_SERIALIZABLE
+			case "DEFAULT":
+				dsn.transactionMode = C.OCI_TRANS_READWRITE
+			default:
+				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
+			}
+		case "prefetch_rows":
+			z, err := strconv.ParseInt(v[0], 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid prefetch_rows", v[0])
+			}
+			dsn.prefetch_rows = uint32(z)
+		case "prefetch_memory":
+			z, err := strconv.ParseInt(v[0], 10, 32)
+			if err != nil {
+				return nil, fmt.Errorf("invalid prefetch_memory", v[0])
+			}
+			dsn.prefetch_memory = uint32(z)
+		default:
+			log.Println("", k)
+
+		}
+	}
+	return dsn, nil
+}
 
 func (tx *OCI8Tx) Commit() error {
 	tx.c.inTransaction = false
@@ -428,13 +503,13 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	}
 
 	// set safe defaults
-	conn.attrs = make(Valuesc)
-	conn.attrs.Set("prefetch_rows", 10)
-	conn.attrs.Set("prefetch_memory", int64(0))
+	//conn.attrs = make(Valuesc)
+	//conn.attrs.Set("prefetch_rows", 10)
+	//conn.attrs.Set("prefetch_memory", int64(0))
 
-	for k, v := range parseEnviron(os.Environ()) {
-		conn.attrs.Set(k, v)
-	}
+	//for k, v := range parseEnviron(os.Environ()) {
+	//	conn.attrs.Set(k, v)
+	//}
 
 	if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
@@ -655,12 +730,9 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				boundParameters = append(boundParameters, oci8bind{dty, pt})
 
 			}
-			
-			
-			
-				
+
 			tryagain := false
-			
+
 			copy((*[1 << 30]byte)(zp)[0:len(zone)], zone)
 			rv := C.OCIDateTimeConstruct(
 				s.c.env,
@@ -687,13 +759,12 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				if rvz.rv != C.OCI_SUCCESS {
 					return nil, ociGetError(rvz.rv, s.c.err)
 				}
-				if offset != int(rvz.h)*60*60+int(rvz.m)*60  {
-					log.Println( "oracle timezone offset dont match", zone, offset, int(rvz.h)*60*60+int(rvz.m)*60)
+				if offset != int(rvz.h)*60*60+int(rvz.m)*60 {
+					log.Println("oracle timezone offset dont match", zone, offset, int(rvz.h)*60*60+int(rvz.m)*60)
 					tryagain = true
 				}
 			}
-		
-		
+
 			if tryagain {
 				sign := '+'
 				if offset < 0 {
@@ -724,8 +795,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					return nil, ociGetError(rv, s.c.err)
 				}
 			}
-
-			
 
 			cdata = (*C.char)(pt)
 
@@ -811,16 +880,16 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	}
 
 	// set the row prefetch.  Only one extra row per fetch will be returned unless this is set.
-	if prefetch_size := C.ub4(s.c.attrs.Get("prefetch_rows").(int)); prefetch_size > 0 {
-		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, prefetch_size, C.OCI_ATTR_PREFETCH_ROWS, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
+	if s.c.prefetch_rows > 0 {
+		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, C.ub4(s.c.prefetch_rows), C.OCI_ATTR_PREFETCH_ROWS, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
 			return nil, ociGetError(rv, s.c.err)
 		}
 	}
 
 	// if non-zero, oci will fetch rows until the memory limit or row prefetch limit is hit.
 	// useful for memory constrained systems
-	if prefetch_memory := C.ub4(s.c.attrs.Get("prefetch_memory").(int64)); prefetch_memory > 0 {
-		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, prefetch_memory, C.OCI_ATTR_PREFETCH_MEMORY, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
+	if s.c.prefetch_memory > 0 {
+		if rv := C.WrapOCIAttrSetUb4(s.s, C.OCI_HTYPE_STMT, C.ub4(s.c.prefetch_memory), C.OCI_ATTR_PREFETCH_MEMORY, (*C.OCIError)(s.c.err)); rv != C.OCI_SUCCESS {
 			return nil, ociGetError(rv, s.c.err)
 		}
 	}
@@ -1014,21 +1083,21 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 func (s *OCI8Stmt) lastInsertId() (int64, error) {
 	/*
-    log.Println("**************************************************************************************")
-    var rowid unsafe.Pointer
-    
-	retR := C.WrapOCIAttrGetRowid(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
-	if retR.rv != C.OCI_SUCCESS {
-		log.Println( ociGetError(retR.rv, s.c.err) , retR.rv)
-		return 0, ociGetError(retR.rv, s.c.err)
-	} else {
-		rowid = retR.ptr
-	}
+	    log.Println("**************************************************************************************")
+	    var rowid unsafe.Pointer
 
-	log.Println( rowid)
-	
-    freeDecriptor( rowid, C.OCI_DTYPE_ROWID)
-    */ 
+		retR := C.WrapOCIAttrGetRowid(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROWID, (*C.OCIError)(s.c.err))
+		if retR.rv != C.OCI_SUCCESS {
+			log.Println( ociGetError(retR.rv, s.c.err) , retR.rv)
+			return 0, ociGetError(retR.rv, s.c.err)
+		} else {
+			rowid = retR.ptr
+		}
+
+		log.Println( rowid)
+
+	    freeDecriptor( rowid, C.OCI_DTYPE_ROWID)
+	*/
 	return int64(0), nil
 }
 
@@ -1389,23 +1458,6 @@ func ociGetError(rv C.sword, err unsafe.Pointer) error {
 		return ociGetErrorS(err)
 	}
 	return fmt.Errorf("oracle return error code %d", rv)
-}
-
-func parseEnviron(env []string) (out map[string]interface{}) {
-	out = make(map[string]interface{})
-
-	for _, v := range env {
-		parts := strings.SplitN(v, "=", 2)
-
-		// Better to have a type error here than later during query execution
-		switch parts[0] {
-		case "PREFETCH_ROWS":
-			out["prefetch_rows"], _ = strconv.Atoi(parts[1])
-		case "PREFETCH_MEMORY":
-			out["prefetch_memory"], _ = strconv.ParseInt(parts[1], 10, 64)
-		}
-	}
-	return out
 }
 
 func CByte(b []byte) *C.char {

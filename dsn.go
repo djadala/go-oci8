@@ -1,19 +1,15 @@
 package oci8
 
 import (
-	"errors"
+	//"errors"
 	//"net/url"
-	"fmt"
+	//"fmt"
 	"strconv"
 	"strings"
-	"time"
+	//"time"
 	"bytes"
 	//"sort"
 )
-
-//#include <oci.h>
-import "C"
-
 
 //partial copy of net/url
 
@@ -214,9 +210,6 @@ func parseAuthority(authority string) (user, pass string, err error) {
 	return user, pass, nil
 }
 
-
-
-
 // Values maps a string key to a list of values.
 // It is typically used for query parameters and form values.
 // Unlike in the http.Header map, the keys in a Values map
@@ -368,59 +361,4 @@ func escape(s string, mode encoding) string {
 		}
 	}
 	return string(t)
-}
-
-func ParseDSN1(dsnString string) (dsn *DSN, err error) {
-
-	dsn = &DSN{Location: time.Local}
-
-	if dsnString == "" {
-		return nil, errors.New("empty dsn")
-	}
-
-	const prefix = "oracle://"
-
-	if strings.HasPrefix(dsnString, prefix) {
-		dsnString = dsnString[len(prefix):]
-	}
-
-	authority, dsnString := split(dsnString, "@", true)
-	if authority != "" {
-		dsn.Username, dsn.Password, err = parseAuthority(authority)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	host, params := split(dsnString, "?", true)
-
-	if host, err = unescape(host, encodePath); err != nil {
-		return nil, err
-	}
-	
-	dsn.Connect = host
-	
-	qp, err := ParseQuery(params)
-	for k, v := range qp {
-		switch k {
-		case "loc":
-			if len(v) > 0 {
-				if dsn.Location, err = time.LoadLocation(v[0]); err != nil {
-					return nil, fmt.Errorf("Invalid loc: %v: %v", v[0], err)
-				}
-			}
-		case "isolation":
-			switch v[0] {
-			case "READONLY":
-				dsn.transactionMode = C.OCI_TRANS_READONLY
-			case "SERIALIZABLE":
-				dsn.transactionMode = C.OCI_TRANS_SERIALIZABLE
-			case "DEFAULT":
-				dsn.transactionMode = C.OCI_TRANS_READWRITE
-			default:
-				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
-			}
-		}
-	}
-	return dsn, nil
 }
