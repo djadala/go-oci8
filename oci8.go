@@ -1098,7 +1098,7 @@ type OCI8Result struct {
 var lastInsertIdError = errors.New("no LastInsertId available")
 
 func (r *OCI8Result) LastInsertId() (int64, error) {
-	return 0, lastInsertIdError//errors.New("no LastInsertId available")
+	return 0, lastInsertIdError
 	//return r.id, r.ei
 }
 
