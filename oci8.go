@@ -293,7 +293,7 @@ import (
 	//"net"
 	//"net/url"
 	//"os"
-	"regexp"
+	//"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -302,7 +302,7 @@ import (
 
 const blobBufSize = 4000
 
-var reDSN = regexp.MustCompile(`^([^/]+)/([^@]+)(@[^/]+)?([^?]*)(\?.*)?$`)
+//var reDSN = regexp.MustCompile(`^([^/]+)/([^@]+)(@[^/]+)?([^?]*)(\?.*)?$`)
 
 type DSN struct {
 	Connect  string
@@ -1135,7 +1135,9 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 		return nil, ociGetError(rv, s.c.err)
 	}
 	n, en := s.rowsAffected()
-	//id, ei := s.lastInsertId()
+	//if n > 0 {
+		//id, ei := s.lastInsertId()
+	//}
 	return &OCI8Result{n: n, errn: en}, nil
 	//return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
 }
