@@ -695,7 +695,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			var pt unsafe.Pointer
 			var zp unsafe.Pointer
 
-			now := v//.(time.Time)
+			now := v //.(time.Time)
 			zone, offset := now.Zone()
 
 			size := len(zone)
@@ -793,7 +793,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			clen = C.sb4(len(v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		case int64:
-			val := v//.(int64)
+			val := v //.(int64)
 			dty = C.SQLT_INT
 			clen = C.sb4(8) // not tested on i386. may only work on amd64
 			cdata = (*C.char)(C.malloc(8))
@@ -812,7 +812,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			dty = C.SQLT_INT
 			clen = C.sb4(1)
 			cdata = (*C.char)(C.malloc(10))
-			if v  { //.(bool) {
+			if v { //.(bool) {
 				*cdata = 1
 			} else {
 				*cdata = 0
@@ -1124,7 +1124,7 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 	}
 	n, en := s.rowsAffected()
 	//if n > 0 {
-		//id, ei := s.lastInsertId()
+	//id, ei := s.lastInsertId()
 	//}
 	return &OCI8Result{n: n, errn: en}, nil
 	//return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
