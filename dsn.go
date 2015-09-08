@@ -189,13 +189,13 @@ func split(s string, c string) (string, string) {
 func parseAuthority(authority string) (user, pass string, err error) {
 
 	userinfo := authority
-	if strings.Index(userinfo, ":") < 0 {
+	if i := strings.IndexAny(userinfo, ":/"); i < 0 {
 		if userinfo, err = unescape(userinfo, encodeUserPassword); err != nil {
 			return "", "", err
 		}
 		user = userinfo
 	} else {
-		username, password := split(userinfo, ":")
+		username, password := split(userinfo, userinfo[i:i+1])
 		if username, err = unescape(username, encodeUserPassword); err != nil {
 			return "", "", err
 		}
