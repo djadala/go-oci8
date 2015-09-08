@@ -375,7 +375,8 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 
 	host, params := split(dsnString, "?")
 
-	if host, err = unescape(host, encodePath); err != nil {
+	//if host, err = unescape(host, encodePath); err != nil {
+	if host, err = unescape(host, encodeHost); err != nil {
 		return nil, err
 	}
 

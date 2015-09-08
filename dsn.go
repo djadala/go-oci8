@@ -20,7 +20,6 @@ const (
 	encodeHost
 	encodeUserPassword
 	encodeQueryComponent
-	encodeFragment
 )
 
 type EscapeError string
@@ -78,10 +77,6 @@ func shouldEscape(c byte, mode encoding) bool {
 			// The RFC reserves (so we must escape) everything.
 			return true
 
-		case encodeFragment: // §4.1
-			// The RFC text is silent but the grammar allows
-			// everything, so escape nothing.
-			return false
 		}
 	}
 
