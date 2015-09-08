@@ -340,19 +340,6 @@ type OCI8Tx struct {
 	c *OCI8Conn
 }
 
-/*
-type Valuesc map[string]interface{}
-
-func (vs Valuesc) Set(k string, v interface{}) {
-	vs[k] = v
-}
-
-func (vs Valuesc) Get(k string) (v interface{}) {
-	v, _ = vs[k]
-	return
-}
-*/
-
 // ParseDSN parses a DSN used to connect to Oracle
 // It expects to receive a string in the form:
 // user:password@host:port/sid?param1=value1&param2=value2
@@ -378,7 +365,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		dsnString = dsnString[len(prefix):]
 	}
 
-	authority, dsnString := split(dsnString, "@", true)
+	authority, dsnString := split(dsnString, "@")
 	if authority != "" {
 		dsn.Username, dsn.Password, err = parseAuthority(authority)
 		if err != nil {
@@ -386,7 +373,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		}
 	}
 
-	host, params := split(dsnString, "?", true)
+	host, params := split(dsnString, "?")
 
 	if host, err = unescape(host, encodePath); err != nil {
 		return nil, err

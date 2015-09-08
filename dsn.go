@@ -176,17 +176,14 @@ func QueryUnescape(s string) (string, error) {
 }
 
 // Maybe s is of the form t c u.
-// If so, return t, c u (or t, u if cutc == true).
+// If so, return  t, u.
 // If not, return s, "".
-func split(s string, c string, cutc bool) (string, string) {
+func split(s string, c string) (string, string) {
 	i := strings.Index(s, c)
 	if i < 0 {
 		return s, ""
 	}
-	if cutc {
-		return s[:i], s[i+len(c):]
-	}
-	return s[:i], s[i:]
+	return s[:i], s[i+len(c):]
 }
 
 func parseAuthority(authority string) (user, pass string, err error) {
@@ -198,7 +195,7 @@ func parseAuthority(authority string) (user, pass string, err error) {
 		}
 		user = userinfo
 	} else {
-		username, password := split(userinfo, ":", true)
+		username, password := split(userinfo, ":")
 		if username, err = unescape(username, encodeUserPassword); err != nil {
 			return "", "", err
 		}
