@@ -188,14 +188,14 @@ func split(s string, c string) (string, string) {
 
 func parseAuthority(authority string) (user, pass string, err error) {
 
-	userinfo := authority
-	if i := strings.IndexAny(userinfo, ":/"); i < 0 {
-		if userinfo, err = unescape(userinfo, encodeUserPassword); err != nil {
+	//userinfo := authority
+	if i := strings.IndexAny(authority, ":/"); i < 0 {
+		if authority, err = unescape(authority, encodeUserPassword); err != nil {
 			return "", "", err
 		}
-		user = userinfo
+		user = authority
 	} else {
-		username, password := split(userinfo, userinfo[i:i+1])
+		username, password := split(authority, authority[i:i+1])
 		if username, err = unescape(username, encodeUserPassword); err != nil {
 			return "", "", err
 		}
