@@ -280,6 +280,19 @@ WrapOCIAttrSetUb4(dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError *err) {
   return OCIAttrSet(h, type, &value, 0, attrtype, err);
 }
 
+typedef struct {
+  char err[1024];
+  sword rv;
+} retErr;
+
+static retErr
+WrapOCIErrorGet(OCIError *err) {
+  retErr vvv;
+  sb4 errcode;
+  OCIErrorGet( err, 1, NULL, &errcode, vvv.err, sizeof(vvv.err), OCI_HTYPE_ERROR);
+  return vvv;
+}
+
 */
 import "C"
 import (
@@ -1393,17 +1406,8 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 }
 
 func ociGetErrorS(err unsafe.Pointer) error {
-	var errcode C.sb4
-	var errbuff [512]C.char
-	C.OCIErrorGet(
-		err,
-		1,
-		nil,
-		&errcode,
-		(*C.OraText)(unsafe.Pointer(&errbuff[0])),
-		512,
-		C.OCI_HTYPE_ERROR)
-	s := C.GoString(&errbuff[0])
+	rv := C.WrapOCIErrorGet((*C.OCIError)(err))
+	s := C.GoString(&rv.err[0])
 	return errors.New(s)
 }
 
