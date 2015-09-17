@@ -41,7 +41,10 @@ func init() {
 	}
 
 	db.Exec("drop table foo")
-	db.Exec(sql1)
+	_, err = db.Exec(sql1)
+	if err != nil {
+		panic(err)
+	}
 
 	_, err = db.Exec("truncate table foo")
 	if err != nil {
@@ -104,6 +107,7 @@ func sqlstest(d dbc, t *testing.T, sql string, p ...interface{}) map[string]inte
 
 	rows, err := sqlrows.New(d.Query(sql, p...))
 	if err != nil {
+		log.Println( err)
 		t.Fatal(err)
 	}
 	if !rows.Next() {
@@ -113,14 +117,14 @@ func sqlstest(d dbc, t *testing.T, sql string, p ...interface{}) map[string]inte
 	err = rows.Scan()
 	if err != nil {
 		rows.Close()
+		log.Println( err)
 		t.Fatal(err)
 	}
 	res := rows.Map()
-	//res := rows.Row()
 	rows.Print()
 	err = rows.Close()
 	if err != nil {
-		rows.Close()
+		log.Println( err)
 		t.Fatal(err)
 	}
 	return res
@@ -130,6 +134,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 
 	rows, err := sqlrows.New(d.Query(sql, p...))
 	if err != nil {
+		log.Println( err)
 		t.Fatal(err)
 	}
 	if !rows.Next() {
@@ -139,6 +144,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 	err = rows.Scan()
 	if err != nil {
 		rows.Close()
+		log.Println( err)
 		t.Fatal(err)
 	}
 	//res := rows.Map()
@@ -146,7 +152,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 	rows.Print()
 	err = rows.Close()
 	if err != nil {
-		rows.Close()
+		log.Println( err)
 		t.Fatal(err)
 	}
 	return res
@@ -464,6 +470,62 @@ func TestNumber2(t *testing.T) {
 	if "991236.5" != r[f].(string) {
 		t.Fatal(r[f], "!=", n)
 	}
+}
+
+func TestNumber300(t *testing.T) {
+	cn, _, _, _ := runtime.Caller(0)
+	fmt.Println(runtime.FuncForPC(cn).Name())
+	f := "C3"
+	n := 192266.71
+	id := "idNum3c3"
+	db.Exec("insert into foo( "+f+", cend) values( :1, :2)", n, id)
+
+	r := sqlstest(db, t, "select cend, sum("+f+") as "+f+" from foo where cend= :1 group by cend", id)
+    fmt.Println(r)
+	if "991236.5" != r[f].(string) {
+	//	t.Fatal(r[f], "!=", n)
+	    fmt.Println(r[f], "!=", n)
+	}
+}
+
+/*
+select 'bee', sum(to_number('100.00', '9G999D99') ) from dual  group by 1;
+
+'BEE'	  SUM(TO_NUMBER('100.00','9G999D99'))
+--------- -----------------------------------
+bee					  100
+
+SQL> select bee, sum(nnn) from( select 'bee' as bee, to_number('100.00', '9G999D99') as nnn from dual) group by bee;
+*/
+
+func TestNumber301(t *testing.T) {
+	cn, _, _, _ := runtime.Caller(0)
+	fmt.Println(runtime.FuncForPC(cn).Name())
+	f := "C3"
+	n := 192266.71
+	id := "idNum3c3"
+	db.Exec("insert into foo( "+f+", cend) values( :1, :2)", n, id)
+
+    qs := "select cend, sum("+f+") as "+f+" from foo where cend= '" + id + "' group by cend"
+    rows, err := db.Query(qs)
+
+    if err != nil {
+        fmt.Println(err)
+        t.Fatal( err)
+    }
+    defer rows.Close()
+    for rows.Next() {
+        var name string
+        var data float32
+        err = rows.Scan(&name, &data)
+		if err != nil {
+			fmt.Println(err)
+			t.Fatal( err)
+		}
+
+        fmt.Println(name, data)
+
+    }
 }
 
 func TestFloat1(t *testing.T) {
