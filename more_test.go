@@ -107,7 +107,7 @@ func sqlstest(d dbc, t *testing.T, sql string, p ...interface{}) map[string]inte
 
 	rows, err := sqlrows.New(d.Query(sql, p...))
 	if err != nil {
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	if !rows.Next() {
@@ -117,14 +117,14 @@ func sqlstest(d dbc, t *testing.T, sql string, p ...interface{}) map[string]inte
 	err = rows.Scan()
 	if err != nil {
 		rows.Close()
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	res := rows.Map()
 	rows.Print()
 	err = rows.Close()
 	if err != nil {
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	return res
@@ -134,7 +134,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 
 	rows, err := sqlrows.New(d.Query(sql, p...))
 	if err != nil {
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	if !rows.Next() {
@@ -144,7 +144,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 	err = rows.Scan()
 	if err != nil {
 		rows.Close()
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	//res := rows.Map()
@@ -152,7 +152,7 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 	rows.Print()
 	err = rows.Close()
 	if err != nil {
-		log.Println( err)
+		log.Println(err)
 		t.Fatal(err)
 	}
 	return res
@@ -481,10 +481,10 @@ func TestNumber300(t *testing.T) {
 	db.Exec("insert into foo( "+f+", cend) values( :1, :2)", n, id)
 
 	r := sqlstest(db, t, "select cend, sum("+f+") as "+f+" from foo where cend= :1 group by cend", id)
-    fmt.Println(r)
+	fmt.Println(r)
 	if "991236.5" != r[f].(string) {
-	//	t.Fatal(r[f], "!=", n)
-	    fmt.Println(r[f], "!=", n)
+		//	t.Fatal(r[f], "!=", n)
+		fmt.Println(r[f], "!=", n)
 	}
 }
 
@@ -506,26 +506,26 @@ func TestNumber301(t *testing.T) {
 	id := "idNum3c3"
 	db.Exec("insert into foo( "+f+", cend) values( :1, :2)", n, id)
 
-    qs := "select cend, sum("+f+") as "+f+" from foo where cend= '" + id + "' group by cend"
-    rows, err := db.Query(qs)
+	qs := "select cend, sum(" + f + ") as " + f + " from foo where cend= '" + id + "' group by cend"
+	rows, err := db.Query(qs)
 
-    if err != nil {
-        fmt.Println(err)
-        t.Fatal( err)
-    }
-    defer rows.Close()
-    for rows.Next() {
-        var name string
-        var data float32
-        err = rows.Scan(&name, &data)
+	if err != nil {
+		fmt.Println(err)
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var data float32
+		err = rows.Scan(&name, &data)
 		if err != nil {
 			fmt.Println(err)
-			t.Fatal( err)
+			t.Fatal(err)
 		}
 
-        fmt.Println(name, data)
+		fmt.Println(name, data)
 
-    }
+	}
 }
 
 func TestFloat1(t *testing.T) {

@@ -8,6 +8,19 @@ package oci8
 #cgo pkg-config: oci8
 
 typedef struct {
+  char err[1024];
+  sword rv;
+} retErr;
+
+static retErr
+WrapOCIErrorGet(OCIError *err) {
+  retErr vvv;
+  sb4 errcode;
+  OCIErrorGet(err, 1, NULL, &errcode, vvv.err, sizeof(vvv.err), OCI_HTYPE_ERROR);
+  return vvv;
+}
+
+typedef struct {
   int num;
   sword rv;
 } retInt;
@@ -969,7 +982,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 
 		case C.SQLT_NUM:
 			oci8cols[i].kind = C.SQLT_CHR
-			oci8cols[i].size = int(lp)
+			oci8cols[i].size = int(lp * 4)
 			oci8cols[i].pbuf = C.malloc(C.size_t(oci8cols[i].size) + 1)
 
 		case C.SQLT_IBDOUBLE, C.SQLT_IBFLOAT:
@@ -1286,6 +1299,15 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
 		case C.SQLT_BIN: // RAW
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			dest[i] = buf
+		case C.SQLT_NUM: // NUMBER
+			buf := (*[21]byte)(unsafe.Pointer(rc.cols[i].pbuf))
+			dest[i] = buf
+		case C.SQLT_VNU: // VARNUM
+			buf := (*[22]byte)(unsafe.Pointer(rc.cols[i].pbuf))
+			dest[i] = buf
+		case C.SQLT_INT: // INT
 			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
 			dest[i] = buf
 		case C.SQLT_LNG: // LONG
