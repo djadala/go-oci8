@@ -16,7 +16,7 @@ static retErr
 WrapOCIErrorGet(OCIError *err) {
   retErr vvv;
   sb4 errcode;
-  OCIErrorGet(err, 1, NULL, &errcode, vvv.err, sizeof(vvv.err), OCI_HTYPE_ERROR);
+  OCIErrorGet(err, 1, NULL, &errcode, (OraText*) vvv.err, sizeof(vvv.err), OCI_HTYPE_ERROR);
   return vvv;
 }
 
@@ -293,18 +293,11 @@ WrapOCIAttrSetUb4(dvoid *h, ub4 type, ub4 value, ub4  attrtype, OCIError *err) {
   return OCIAttrSet(h, type, &value, 0, attrtype, err);
 }
 
-typedef struct {
-  char err[1024];
-  sword rv;
-} retErr;
+typedef struct  {
+	sb2 ind;
+	ub2 rlen;
+} indrlen;
 
-static retErr
-WrapOCIErrorGet(OCIError *err) {
-  retErr vvv;
-  sb4 errcode;
-  OCIErrorGet( err, 1, NULL, &errcode, vvv.err, sizeof(vvv.err), OCI_HTYPE_ERROR);
-  return vvv;
-}
 
 */
 import "C"
@@ -932,6 +925,10 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	}
 
 	oci8cols := make([]oci8col, rc)
+
+	indrlenptr := C.calloc(C.size_t(rc), C.sizeof_indrlen)
+	indrlen := (*[1 << 16]C.indrlen)(indrlenptr)[0:rc]
+
 	for i := 0; i < rc; i++ {
 		var p unsafe.Pointer
 		var tp C.ub2
@@ -1074,6 +1071,9 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].size = int(lp + 1)
 		}
 
+		oci8cols[i].ind = &indrlen[i].ind   //(*C.sb2)(C.malloc(4))
+		oci8cols[i].rlen = &indrlen[i].rlen //(*C.ub2)(C.malloc(4))
+
 		if rv := C.OCIDefineByPos(
 			(*C.OCIStmt)(s.s),
 			s.defp,
@@ -1082,14 +1082,18 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].pbuf,
 			C.sb4(oci8cols[i].size),
 			oci8cols[i].kind,
-			unsafe.Pointer(&oci8cols[i].ind),
-			&oci8cols[i].rlen,
+			//unsafe.Pointer(&oci8cols[i].ind),
+			unsafe.Pointer(oci8cols[i].ind),
+			//&oci8cols[i].rlen,
+			oci8cols[i].rlen,
 			nil,
 			C.OCI_DEFAULT); rv != C.OCI_SUCCESS {
+
+			C.free(indrlenptr)
 			return nil, ociGetError(rv, s.c.err)
 		}
 	}
-	return &OCI8Rows{s, oci8cols, false}, nil
+	return &OCI8Rows{s, oci8cols, false, indrlenptr}, nil
 }
 
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
@@ -1160,8 +1164,8 @@ type oci8col struct {
 	name string
 	kind C.ub2
 	size int
-	ind  C.sb2
-	rlen C.ub2
+	ind  *C.sb2
+	rlen *C.ub2
 	pbuf unsafe.Pointer
 }
 
@@ -1171,9 +1175,10 @@ type oci8bind struct {
 }
 
 type OCI8Rows struct {
-	s    *OCI8Stmt
-	cols []oci8col
-	e    bool
+	s          *OCI8Stmt
+	cols       []oci8col
+	e          bool
+	indrlenptr unsafe.Pointer
 }
 
 func freeDecriptor(p unsafe.Pointer, dtype C.ub4) {
@@ -1185,7 +1190,11 @@ func freeDecriptor(p unsafe.Pointer, dtype C.ub4) {
 }
 
 func (rc *OCI8Rows) Close() error {
+	C.free(rc.indrlenptr)
+
 	for _, col := range rc.cols {
+		//C.free(unsafe.Pointer(col.ind))
+		//C.free(unsafe.Pointer(col.rlen))
 		switch col.kind {
 		case C.SQLT_CLOB, C.SQLT_BLOB:
 			freeDecriptor(col.pbuf, C.OCI_DTYPE_LOB)
@@ -1232,10 +1241,10 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 
 	for i := range dest {
 		// TODO: switch rc.cols[i].ind
-		if rc.cols[i].ind == -1 { // Null
+		if *(rc.cols[i].ind) == -1 { // Null
 			dest[i] = nil
 			continue
-		} else if rc.cols[i].ind != 0 {
+		} else if *(rc.cols[i].ind) != 0 {
 			s := fmt.Sprintf("Unknown column indicator: %d, col %s", rc.cols[i].ind, rc.cols[i].name)
 			log.Println(s)
 			return errors.New(s)
@@ -1243,7 +1252,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 
 		switch rc.cols[i].kind {
 		case C.SQLT_DAT: // for test, date are return as timestamp
-			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:*rc.cols[i].rlen]
 			// TODO: Handle BCE dates (http://docs.oracle.com/cd/B12037_01/appdev.101/b10779/oci03typ.htm#438305)
 			// TODO: Handle timezones (http://docs.oracle.com/cd/B12037_01/appdev.101/b10779/oci03typ.htm#443601)
 			dest[i] = time.Date(
@@ -1288,18 +1297,18 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				dest[i] = string(append(buf, b[:int(*bamt)]...))
 			}
 		case C.SQLT_CHR, C.SQLT_AFC, C.SQLT_AVC:
-			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:*rc.cols[i].rlen]
 			switch {
-			case rc.cols[i].ind == 0: // Normal
+			case *rc.cols[i].ind == 0: // Normal
 				dest[i] = string(buf)
-			case rc.cols[i].ind == -2 || // Field longer than type (truncated)
-				rc.cols[i].ind > 0: // Field longer than type (truncated). Value is original length.
+			case *rc.cols[i].ind == -2 || // Field longer than type (truncated)
+				*rc.cols[i].ind > 0: // Field longer than type (truncated). Value is original length.
 				dest[i] = string(buf)
 			default:
 				return errors.New(fmt.Sprintf("Unknown column indicator: %d", rc.cols[i].ind))
 			}
 		case C.SQLT_BIN: // RAW
-			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:*rc.cols[i].rlen]
 			dest[i] = buf
 		case C.SQLT_NUM: // NUMBER
 			buf := (*[21]byte)(unsafe.Pointer(rc.cols[i].pbuf))
@@ -1308,10 +1317,10 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 			buf := (*[22]byte)(unsafe.Pointer(rc.cols[i].pbuf))
 			dest[i] = buf
 		case C.SQLT_INT: // INT
-			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:*rc.cols[i].rlen]
 			dest[i] = buf
 		case C.SQLT_LNG: // LONG
-			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:rc.cols[i].rlen]
+			buf := (*[1 << 30]byte)(unsafe.Pointer(rc.cols[i].pbuf))[0:*rc.cols[i].rlen]
 			dest[i] = buf
 		case C.SQLT_IBDOUBLE, C.SQLT_IBFLOAT:
 			colsize := rc.cols[i].size
