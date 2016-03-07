@@ -1,17 +1,37 @@
 package oci8
 
 import (
-	//"errors"
-	//"net/url"
-	//"fmt"
+	"bytes"
 	"strconv"
 	"strings"
-	//"time"
-	"bytes"
-	//"sort"
 )
 
-//partial copy of net/url
+// partial copy of go1.5 net/url, modified to parse oracle dsn,
+// support '/' & ':' as user:password separators
+
+func ishex(c byte) bool {
+	switch {
+	case '0' <= c && c <= '9':
+		return true
+	case 'a' <= c && c <= 'f':
+		return true
+	case 'A' <= c && c <= 'F':
+		return true
+	}
+	return false
+}
+
+func unhex(c byte) byte {
+	switch {
+	case '0' <= c && c <= '9':
+		return c - '0'
+	case 'a' <= c && c <= 'f':
+		return c - 'a' + 10
+	case 'A' <= c && c <= 'F':
+		return c - 'A' + 10
+	}
+	return 0
+}
 
 type encoding int
 
@@ -84,28 +104,11 @@ func shouldEscape(c byte, mode encoding) bool {
 	return true
 }
 
-func ishex(c byte) bool {
-	switch {
-	case '0' <= c && c <= '9':
-		return true
-	case 'a' <= c && c <= 'f':
-		return true
-	case 'A' <= c && c <= 'F':
-		return true
-	}
-	return false
-}
-
-func unhex(c byte) byte {
-	switch {
-	case '0' <= c && c <= '9':
-		return c - '0'
-	case 'a' <= c && c <= 'f':
-		return c - 'a' + 10
-	case 'A' <= c && c <= 'F':
-		return c - 'A' + 10
-	}
-	return 0
+// QueryUnescape does the inverse transformation of QueryEscape, converting
+// %AB into the byte 0xAB and '+' into ' ' (space). It returns an error if
+// any % is not followed by two hexadecimal digits.
+func QueryUnescape(s string) (string, error) {
+	return unescape(s, encodeQueryComponent)
 }
 
 // unescape unescapes a string; the mode specifies
@@ -163,11 +166,47 @@ func unescape(s string, mode encoding) (string, error) {
 	return string(t), nil
 }
 
-// QueryUnescape does the inverse transformation of QueryEscape, converting
-// %AB into the byte 0xAB and '+' into ' ' (space). It returns an error if
-// any % is not followed by two hexadecimal digits.
-func QueryUnescape(s string) (string, error) {
-	return unescape(s, encodeQueryComponent)
+// QueryEscape escapes the string so it can be safely placed
+// inside a URL query.
+func QueryEscape(s string) string {
+	return escape(s, encodeQueryComponent)
+}
+
+func escape(s string, mode encoding) string {
+	spaceCount, hexCount := 0, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if shouldEscape(c, mode) {
+			if c == ' ' && mode == encodeQueryComponent {
+				spaceCount++
+			} else {
+				hexCount++
+			}
+		}
+	}
+
+	if spaceCount == 0 && hexCount == 0 {
+		return s
+	}
+
+	t := make([]byte, len(s)+2*hexCount)
+	j := 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == ' ' && mode == encodeQueryComponent:
+			t[j] = '+'
+			j++
+		case shouldEscape(c, mode):
+			t[j] = '%'
+			t[j+1] = "0123456789ABCDEF"[c>>4]
+			t[j+2] = "0123456789ABCDEF"[c&15]
+			j += 3
+		default:
+			t[j] = s[i]
+			j++
+		}
+	}
+	return string(t)
 }
 
 // Maybe s is of the form t c u.
@@ -183,7 +222,6 @@ func split(s string, c string) (string, string) {
 
 func parseAuthority(authority string) (user, pass string, err error) {
 
-	//userinfo := authority
 	if i := strings.IndexAny(authority, ":/"); i < 0 {
 		if authority, err = unescape(authority, encodeUserPassword); err != nil {
 			return "", "", err
@@ -286,8 +324,7 @@ func parseQuery(m Values, query string) (err error) {
 }
 
 // Encode encodes the values into ``URL encoded'' form
-// ("bar=baz&foo=quux")
-// !!!!!!!!!!!!!!!!!!!!!!!!!!! not sorted by key.
+// ("bar=baz&foo=quux") not sorted by key
 func (v Values) Encode() string {
 	if v == nil {
 		return ""
@@ -297,7 +334,6 @@ func (v Values) Encode() string {
 	for k := range v {
 		keys = append(keys, k)
 	}
-	//sort.Strings(keys)
 	for _, k := range keys {
 		vs := v[k]
 		prefix := QueryEscape(k) + "="
@@ -310,47 +346,4 @@ func (v Values) Encode() string {
 		}
 	}
 	return buf.String()
-}
-
-// QueryEscape escapes the string so it can be safely placed
-// inside a URL query.
-func QueryEscape(s string) string {
-	return escape(s, encodeQueryComponent)
-}
-
-func escape(s string, mode encoding) string {
-	spaceCount, hexCount := 0, 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if shouldEscape(c, mode) {
-			if c == ' ' && mode == encodeQueryComponent {
-				spaceCount++
-			} else {
-				hexCount++
-			}
-		}
-	}
-
-	if spaceCount == 0 && hexCount == 0 {
-		return s
-	}
-
-	t := make([]byte, len(s)+2*hexCount)
-	j := 0
-	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
-		case c == ' ' && mode == encodeQueryComponent:
-			t[j] = '+'
-			j++
-		case shouldEscape(c, mode):
-			t[j] = '%'
-			t[j+1] = "0123456789ABCDEF"[c>>4]
-			t[j+2] = "0123456789ABCDEF"[c&15]
-			j += 3
-		default:
-			t[j] = s[i]
-			j++
-		}
-	}
-	return string(t)
 }

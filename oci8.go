@@ -4,6 +4,7 @@ package oci8
 #include <oci.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #cgo pkg-config: oci8
 
@@ -130,7 +131,7 @@ WrapOCIDescriptorAlloc(dvoid *env, ub4 type, size_t extra) {
     &vvv.ptr,
     type,
     extra,
-    ptr); //&vvv.extra
+    ptr);
   return vvv;
 }
 
@@ -309,10 +310,7 @@ import (
 	"io"
 	"log"
 	"math"
-	//"net"
-	//"net/url"
-	//"os"
-	//"regexp"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -320,8 +318,6 @@ import (
 )
 
 const blobBufSize = 4000
-
-//var reDSN = regexp.MustCompile(`^([^/]+)/([^@]+)(@[^/]+)?([^?]*)(\?.*)?$`)
 
 type DSN struct {
 	Connect  string
@@ -335,8 +331,28 @@ type DSN struct {
 	transactionMode C.ub4
 }
 
+var (
+	defaultPrefetchRows   uint32
+	defaultPrefetchMemory uint32
+)
+
 func init() {
 	sql.Register("oci8", &OCI8Driver{})
+	// set safe defaults
+	defaultPrefetchRows = 10
+	defaultPrefetchMemory = 0
+
+	if v := os.Getenv("PREFETCH_ROWS"); v != "" {
+		if uv, err := strconv.ParseUint(v, 10, 32); err == nil {
+			defaultPrefetchRows = uint32(uv)
+		}
+	}
+	if v := os.Getenv("PREFETCH_MEMORY"); v != "" {
+		if uv, err := strconv.ParseUint(v, 10, 32); err == nil {
+			//OCIAttrSet OCI_ATTR_PREFETCH_MEMORY accepts 4 byte integer
+			defaultPrefetchMemory = uint32(uv)
+		}
+	}
 }
 
 type OCI8Driver struct {
@@ -394,14 +410,13 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 
 	host, params := split(dsnString, "?")
 
-	//if host, err = unescape(host, encodePath); err != nil {
 	if host, err = unescape(host, encodeHost); err != nil {
 		return nil, err
 	}
 
 	dsn.Connect = host
-	dsn.prefetch_rows = 10
-	dsn.prefetch_memory = 0
+	dsn.prefetch_rows = defaultPrefetchRows
+	dsn.prefetch_memory = defaultPrefetchMemory
 
 	qp, err := ParseQuery(params)
 	for k, v := range qp {
@@ -509,15 +524,6 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		return nil, err
 	}
 
-	// set safe defaults
-	//conn.attrs = make(Valuesc)
-	//conn.attrs.Set("prefetch_rows", 10)
-	//conn.attrs.Set("prefetch_memory", int64(0))
-
-	//for k, v := range parseEnviron(os.Environ()) {
-	//	conn.attrs.Set(k, v)
-	//}
-
 	if rv := C.WrapOCIEnvCreate(
 		C.OCI_DEFAULT|C.OCI_THREADED,
 		0); rv.rv != C.OCI_SUCCESS && rv.rv != C.OCI_SUCCESS_WITH_INFO {
@@ -558,6 +564,8 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	}
 	conn.location = dsn.Location
 	conn.transactionMode = dsn.transactionMode
+	conn.prefetch_rows = dsn.prefetch_rows
+	conn.prefetch_memory = dsn.prefetch_memory
 	return &conn, nil
 }
 
@@ -691,7 +699,6 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			cdata = nil
 			clen = 0
 		case []byte:
-			//v := v.([]byte)
 			dty = C.SQLT_BIN
 			cdata = CByte(v)
 			clen = C.sb4(len(v))
@@ -714,8 +721,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			var pt unsafe.Pointer
 			var zp unsafe.Pointer
 
-			now := v //.(time.Time)
-			zone, offset := now.Zone()
+			zone, offset := v.Zone()
 
 			size := len(zone)
 			if size < 8 {
@@ -745,13 +751,13 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				s.c.env,
 				(*C.OCIError)(s.c.err),
 				(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
-				C.sb2(now.Year()),
-				C.ub1(now.Month()),
-				C.ub1(now.Day()),
-				C.ub1(now.Hour()),
-				C.ub1(now.Minute()),
-				C.ub1(now.Second()),
-				C.ub4(now.Nanosecond()),
+				C.sb2(v.Year()),
+				C.ub1(v.Month()),
+				C.ub1(v.Day()),
+				C.ub1(v.Hour()),
+				C.ub1(v.Minute()),
+				C.ub1(v.Second()),
+				C.ub4(v.Nanosecond()),
 				(*C.OraText)(zp),
 				C.size_t(len(zone)),
 			)
@@ -787,13 +793,13 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					s.c.env,
 					(*C.OCIError)(s.c.err),
 					(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)),
-					C.sb2(now.Year()),
-					C.ub1(now.Month()),
-					C.ub1(now.Day()),
-					C.ub1(now.Hour()),
-					C.ub1(now.Minute()),
-					C.ub1(now.Second()),
-					C.ub4(now.Nanosecond()),
+					C.sb2(v.Year()),
+					C.ub1(v.Month()),
+					C.ub1(v.Day()),
+					C.ub1(v.Hour()),
+					C.ub1(v.Minute()),
+					C.ub1(v.Second()),
+					C.ub4(v.Nanosecond()),
 					(*C.OraText)(zp),
 					C.size_t(len(zone)),
 				)
@@ -806,32 +812,30 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			cdata = (*C.char)(pt)
 
 		case string:
-			//v := v.(string)
 			dty = C.SQLT_AFC // don't trim strings !!!
 			cdata = C.CString(v)
 			clen = C.sb4(len(v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		case int64:
-			val := v //.(int64)
 			dty = C.SQLT_INT
 			clen = C.sb4(8) // not tested on i386. may only work on amd64
 			cdata = (*C.char)(C.malloc(8))
 			buf := (*[1 << 30]byte)(unsafe.Pointer(cdata))[0:8]
-			buf[0] = byte(val & 0x0ff)
-			buf[1] = byte(val >> 8 & 0x0ff)
-			buf[2] = byte(val >> 16 & 0x0ff)
-			buf[3] = byte(val >> 24 & 0x0ff)
-			buf[4] = byte(val >> 32 & 0x0ff)
-			buf[5] = byte(val >> 40 & 0x0ff)
-			buf[6] = byte(val >> 48 & 0x0ff)
-			buf[7] = byte(val >> 56 & 0x0ff)
+			buf[0] = byte(v & 0x0ff)
+			buf[1] = byte(v >> 8 & 0x0ff)
+			buf[2] = byte(v >> 16 & 0x0ff)
+			buf[3] = byte(v >> 24 & 0x0ff)
+			buf[4] = byte(v >> 32 & 0x0ff)
+			buf[5] = byte(v >> 40 & 0x0ff)
+			buf[6] = byte(v >> 48 & 0x0ff)
+			buf[7] = byte(v >> 56 & 0x0ff)
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case bool: // oracle dont have bool, handle as 0/1
 			dty = C.SQLT_INT
 			clen = C.sb4(1)
 			cdata = (*C.char)(C.malloc(10))
-			if v { //.(bool) {
+			if v {
 				*cdata = 1
 			} else {
 				*cdata = 0
@@ -1193,8 +1197,6 @@ func (rc *OCI8Rows) Close() error {
 	C.free(rc.indrlenptr)
 
 	for _, col := range rc.cols {
-		//C.free(unsafe.Pointer(col.ind))
-		//C.free(unsafe.Pointer(col.rlen))
 		switch col.kind {
 		case C.SQLT_CLOB, C.SQLT_BLOB:
 			freeDecriptor(col.pbuf, C.OCI_DTYPE_LOB)
