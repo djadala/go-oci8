@@ -1069,6 +1069,15 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	return &OCI8Rows{s, oci8cols, false, indrlenptr}, nil
 }
 
+//  OCIRowid *rowid;   /* the rowid in opaque format */
+//  /* allocate descriptor with OCIDescriptorAlloc() */
+//  status = OCIDescriptorAlloc ((dvoid *) envhp, (dvoid **) &rowid,
+//     (ub4) OCI_DTYPE_ROWID, (size_t) 0, (dvoid **) 0);
+//  status = OCIAttrGet ((dvoid*) mystmtp, OCI_HTYPE_STMT,
+//    (dvoid*) rowid, (ub4 *) 0, OCI_ATTR_ROWID, (OCIError *) myerrhp);
+//
+//  OCIRowidToChar()
+
 func (s *OCI8Stmt) rowsAffected() (int64, error) {
 	retUb4 := C.WrapOCIAttrGetUb4(s.s, C.OCI_HTYPE_STMT, C.OCI_ATTR_ROW_COUNT, (*C.OCIError)(s.c.err))
 	if retUb4.rv != C.OCI_SUCCESS {
