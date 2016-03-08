@@ -299,7 +299,6 @@ typedef struct  {
 	ub2 rlen;
 } indrlen;
 
-
 */
 import "C"
 import (
@@ -320,13 +319,11 @@ import (
 const blobBufSize = 4000
 
 type DSN struct {
-	Connect  string
-	Username string
-	Password string
-
+	Connect         string
+	Username        string
+	Password        string
 	prefetch_rows   uint32
 	prefetch_memory uint32
-
 	Location        *time.Location
 	transactionMode C.ub4
 }
@@ -359,13 +356,11 @@ type OCI8Driver struct {
 }
 
 type OCI8Conn struct {
-	svc unsafe.Pointer
-	env unsafe.Pointer
-	err unsafe.Pointer
-
+	svc             unsafe.Pointer
+	env             unsafe.Pointer
+	err             unsafe.Pointer
 	prefetch_rows   uint32
 	prefetch_memory uint32
-
 	location        *time.Location
 	transactionMode C.ub4
 	inTransaction   bool
@@ -415,8 +410,9 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 	}
 
 	dsn.Connect = host
-	dsn.prefetch_rows = defaultPrefetchRows
-	dsn.prefetch_memory = defaultPrefetchMemory
+	// set safe defaults
+	dsn.prefetch_rows = 10
+	dsn.prefetch_memory = 0
 
 	qp, err := ParseQuery(params)
 	for k, v := range qp {
@@ -452,7 +448,6 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 			dsn.prefetch_memory = uint32(z)
 		default:
 			log.Println("unused parameter", k)
-
 		}
 	}
 	return dsn, nil
@@ -589,6 +584,10 @@ func (c *OCI8Conn) Close() error {
 		C.OCI_HTYPE_ERROR); rv != C.OCI_SUCCESS {
 		log.Println(ociGetError(rv, c.err))
 	}
+
+	C.OCIHandleFree(
+		c.err,
+		C.OCI_HTYPE_ERROR)
 
 	c.svc = nil
 	c.env = nil
@@ -929,10 +928,8 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 	}
 
 	oci8cols := make([]oci8col, rc)
-
 	indrlenptr := C.calloc(C.size_t(rc), C.sizeof_indrlen)
 	indrlen := (*[1 << 16]C.indrlen)(indrlenptr)[0:rc]
-
 	for i := 0; i < rc; i++ {
 		var p unsafe.Pointer
 		var tp C.ub2
@@ -1075,8 +1072,8 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].size = int(lp + 1)
 		}
 
-		oci8cols[i].ind = &indrlen[i].ind   //(*C.sb2)(C.malloc(4))
-		oci8cols[i].rlen = &indrlen[i].rlen //(*C.ub2)(C.malloc(4))
+		oci8cols[i].ind = &indrlen[i].ind
+		oci8cols[i].rlen = &indrlen[i].rlen
 
 		if rv := C.OCIDefineByPos(
 			(*C.OCIStmt)(s.s),
@@ -1086,13 +1083,10 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].pbuf,
 			C.sb4(oci8cols[i].size),
 			oci8cols[i].kind,
-			//unsafe.Pointer(&oci8cols[i].ind),
 			unsafe.Pointer(oci8cols[i].ind),
-			//&oci8cols[i].rlen,
 			oci8cols[i].rlen,
 			nil,
 			C.OCI_DEFAULT); rv != C.OCI_SUCCESS {
-
 			C.free(indrlenptr)
 			return nil, ociGetError(rv, s.c.err)
 		}
@@ -1195,7 +1189,6 @@ func freeDecriptor(p unsafe.Pointer, dtype C.ub4) {
 
 func (rc *OCI8Rows) Close() error {
 	C.free(rc.indrlenptr)
-
 	for _, col := range rc.cols {
 		switch col.kind {
 		case C.SQLT_CLOB, C.SQLT_BLOB:
@@ -1459,7 +1452,7 @@ func ociGetError(rv C.sword, err unsafe.Pointer) error {
 	case C.OCI_STILL_EXECUTING:
 		return errors.New("OCI_STILL_EXECUTING")
 	case C.OCI_SUCCESS:
-		log.Fatal("ociGetError called with no error")
+		panic("ociGetError called with no error")
 	case C.OCI_ERROR:
 		return ociGetErrorS(err)
 	}
