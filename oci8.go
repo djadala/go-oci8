@@ -582,12 +582,8 @@ func (c *OCI8Conn) Close() error {
 	if rv := C.OCIHandleFree(
 		c.err,
 		C.OCI_HTYPE_ERROR); rv != C.OCI_SUCCESS {
-		log.Println(ociGetError(rv, c.err))
+		log.Println("OCIHandleFree return", rv)
 	}
-
-	C.OCIHandleFree(
-		c.err,
-		C.OCI_HTYPE_ERROR)
 
 	c.svc = nil
 	c.env = nil
