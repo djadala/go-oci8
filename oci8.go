@@ -309,7 +309,6 @@ import (
 	"io"
 	"log"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -328,28 +327,8 @@ type DSN struct {
 	transactionMode C.ub4
 }
 
-var (
-	defaultPrefetchRows   uint32
-	defaultPrefetchMemory uint32
-)
-
 func init() {
 	sql.Register("oci8", &OCI8Driver{})
-	// set safe defaults
-	defaultPrefetchRows = 10
-	defaultPrefetchMemory = 0
-
-	if v := os.Getenv("PREFETCH_ROWS"); v != "" {
-		if uv, err := strconv.ParseUint(v, 10, 32); err == nil {
-			defaultPrefetchRows = uint32(uv)
-		}
-	}
-	if v := os.Getenv("PREFETCH_MEMORY"); v != "" {
-		if uv, err := strconv.ParseUint(v, 10, 32); err == nil {
-			//OCIAttrSet OCI_ATTR_PREFETCH_MEMORY accepts 4 byte integer
-			defaultPrefetchMemory = uint32(uv)
-		}
-	}
 }
 
 type OCI8Driver struct {
@@ -1232,10 +1211,10 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 
 	for i := range dest {
 		// TODO: switch rc.cols[i].ind
-		if *(rc.cols[i].ind) == -1 { // Null
+		if *rc.cols[i].ind == -1 { // Null
 			dest[i] = nil
 			continue
-		} else if *(rc.cols[i].ind) != 0 {
+		} else if *rc.cols[i].ind != 0 {
 			s := fmt.Sprintf("Unknown column indicator: %d, col %s", rc.cols[i].ind, rc.cols[i].name)
 			log.Println(s)
 			return errors.New(s)
