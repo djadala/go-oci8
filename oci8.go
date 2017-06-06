@@ -309,6 +309,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -576,10 +577,11 @@ type OCI8Stmt struct {
 	closed bool
 	bp     **C.OCIBind
 	defp   **C.OCIDefine
+	// pbind  []oci8bind //bind params
 }
 
 func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
-	pquery := C.CString(query)
+	pquery := C.CString(placeholders(query))
 	defer C.free(unsafe.Pointer(pquery))
 	var s, bp, defp unsafe.Pointer
 
@@ -648,10 +650,28 @@ func freeBoundParameters(boundParameters []oci8bind) {
 			case C.SQLT_INTERVAL_YM:
 				freeDecriptor(col.pbuf, C.OCI_DTYPE_INTERVAL_YM)
 			default:
+				log.Printf("%s\n", C.GoString((*C.char)(col.pbuf)))
 				C.free(col.pbuf)
 			}
 		}
 	}
+}
+
+// TODO return (output) parameters
+func (s *OCI8Stmt) ConvertValue(v interface{}) (driver.Value, error) {
+	switch v.(type) {
+	case *string:
+		log.Println("*string")
+	case *int:
+	case *int64:
+	case *[]byte:
+
+	}
+	return driver.DefaultParameterConverter.ConvertValue(v)
+}
+
+func (s *OCI8Stmt) ColumnConverter(i int) driver.ValueConverter {
+	return s
 }
 
 func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err error) {
@@ -673,9 +693,17 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			cdata = nil
 			clen = 0
 		case []byte:
+			log.Println("BIN")
 			dty = C.SQLT_BIN
 			cdata = CByte(v)
 			clen = C.sb4(len(v))
+			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+
+		case *[]byte:
+			log.Println("CHR")
+			dty = C.SQLT_CHR
+			cdata = CByte(*v)
+			clen = C.sb4(len(*v))
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case float64:
@@ -817,7 +845,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		default:
-			//fmt.Printf( "%T\n", v)
+			log.Printf("%T\n", v)
 			dty = C.SQLT_CHR
 			d := fmt.Sprintf("%v", v)
 			clen = C.sb4(len(d))
@@ -963,6 +991,10 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			oci8cols[i].size = int(8)
 			oci8cols[i].pbuf = C.malloc(8)
 
+		case C.SQLT_LNG:
+			oci8cols[i].kind = C.SQLT_BIN
+			oci8cols[i].size = 2000
+			oci8cols[i].pbuf = C.malloc(C.size_t(oci8cols[i].size))
 		case C.SQLT_CLOB, C.SQLT_BLOB:
 			// allocate +io buffers + ub4
 			size := int(unsafe.Sizeof(unsafe.Pointer(nil)) + unsafe.Sizeof(C.ub4(0)))
@@ -974,8 +1006,11 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			if ret := C.WrapOCIDescriptorAlloc(s.c.env, C.OCI_DTYPE_LOB, C.size_t(size)); ret.rv != C.OCI_SUCCESS {
 				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
-
+				// if tp == C.SQLT_LNG {
+				// 	oci8cols[i].kind = C.SQLT_BLOB
+				// } else {
 				oci8cols[i].kind = tp
+				// }
 				oci8cols[i].size = int(unsafe.Sizeof(unsafe.Pointer(nil)))
 				oci8cols[i].pbuf = ret.extra
 				*(*unsafe.Pointer)(ret.extra) = ret.ptr
@@ -1154,6 +1189,7 @@ type oci8col struct {
 type oci8bind struct {
 	kind C.ub2
 	pbuf unsafe.Pointer
+	// out interface{} // original binded data type
 }
 
 type OCI8Rows struct {
@@ -1175,7 +1211,7 @@ func (rc *OCI8Rows) Close() error {
 	C.free(rc.indrlenptr)
 	for _, col := range rc.cols {
 		switch col.kind {
-		case C.SQLT_CLOB, C.SQLT_BLOB:
+		case C.SQLT_CLOB, C.SQLT_BLOB: //, C.SQLT_LNG:
 			freeDecriptor(col.pbuf, C.OCI_DTYPE_LOB)
 		case C.SQLT_TIMESTAMP:
 			freeDecriptor(col.pbuf, C.OCI_DTYPE_TIMESTAMP)
@@ -1186,6 +1222,7 @@ func (rc *OCI8Rows) Close() error {
 		case C.SQLT_INTERVAL_YM:
 			freeDecriptor(col.pbuf, C.OCI_DTYPE_INTERVAL_YM)
 		default:
+			// log.Printf("%s\n", col.pbuf)
 			C.free(col.pbuf)
 		}
 	}
@@ -1243,7 +1280,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				int(buf[6])-1,
 				0,
 				rc.s.c.location)
-		case C.SQLT_BLOB, C.SQLT_CLOB:
+		case C.SQLT_BLOB, C.SQLT_CLOB: //, C.SQLT_LNG:
 			ptmp := unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			bamt := (*C.ub4)(ptmp)
 			ptmp = unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(C.ub4(0)) + unsafe.Sizeof(unsafe.Pointer(nil)))
@@ -1450,4 +1487,15 @@ func CByte(b []byte) *C.char {
 	pp := (*[1 << 30]byte)(p)
 	copy(pp[:], b)
 	return (*C.char)(p)
+}
+
+var phre = regexp.MustCompile(`\?`)
+
+// converts "?" characters to  :1, :2, ... :n
+func placeholders(sql string) string {
+	n := 0
+	return phre.ReplaceAllStringFunc(sql, func(string) string {
+		n++
+		return ":" + strconv.Itoa(n)
+	})
 }

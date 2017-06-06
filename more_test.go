@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"fmt"
 	"jambo/sqlrows"
+
 	_ "local/mattn/go-oci8"
+	// _ "github.com/mattn/go-oci8"
 	"log"
 	"math/rand"
 	"os"
@@ -79,10 +81,11 @@ var sql1 string = `create table foo(
 	c18 NCHAR(20),
 	c19 CLOB,
 	c21 BLOB,
+	c22 LONG,
 	cend varchar2(12)
 	)`
 
-var sql12 string = `insert( c1,c2,c3,c4,c6,c7,c8,c9,c10,c11,c12,c13,c14,c17,c18,c19,c20,c21,cend) into foo values( 
+var sql212 string = `insert( c1,c2,c3,c4,c6,c7,c8,c9,c10,c11,c12,c13,c14,c17,c18,c19,c20,c21,c22,cend) into foo values( 
 :1,
 :2,
 :3,
@@ -100,6 +103,7 @@ NUMTODSINTERVAL( :13 / 1000000000, 'SECOND'),
 :18,
 :19, 
 :21,
+:22,
 'END'
 )`
 
@@ -300,6 +304,24 @@ func TestBytes2(t *testing.T) {
 	}
 }
 
+func TestQuestionMark(t *testing.T) {
+	fmt.Println("test question mark placeholders")
+	a, b := 4, 5
+	c := "zz"
+	r := sqlstest(db, t, "select ? as v1, ? as v2, ? as v3 from dual", a, b, c)
+
+	if fmt.Sprintf("%v", r["V1"]) != fmt.Sprintf("%v", a) {
+		t.Fatal(r["V1"], "!=", a)
+	}
+	if fmt.Sprintf("%v", r["V2"]) != fmt.Sprintf("%v", b) {
+		t.Fatal(r["V2"], "!=", b)
+	}
+	if fmt.Sprintf("%v", r["V3"]) != fmt.Sprintf("%v", c) {
+		t.Fatal(r["V3"], "!=", c)
+	}
+
+}
+
 func TestString1(t *testing.T) {
 	fmt.Println("test string1:")
 	n := strings.Repeat("1234567890", 400)
@@ -427,6 +449,20 @@ func TestSmallClob(t *testing.T) {
 	r := sqlstest(db, t, "select c19 from foo where cend= :1", id)
 	if n != r["C19"].(string) {
 		t.Fatal(r["C19"], "!=", n)
+	}
+}
+
+func TestLONG(t *testing.T) {
+	cn, _, _, _ := runtime.Caller(0)
+	fmt.Println(runtime.FuncForPC(cn).Name())
+
+	n := "zlf"
+	id := "idLong"
+	db.Exec("insert into foo( c22, cend) values( :1, :2)", n, id)
+
+	r := sqlstest(db, t, "select c22 from foo where cend= :1", id)
+	if n != r["C22"].(string) {
+		t.Fatal(r["C22"], "!=", n)
 	}
 }
 
