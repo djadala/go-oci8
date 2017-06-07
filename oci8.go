@@ -577,7 +577,7 @@ type OCI8Stmt struct {
 	closed bool
 	bp     **C.OCIBind
 	defp   **C.OCIDefine
-	// pbind  []oci8bind //bind params
+	pbind  []oci8bind //bind params
 }
 
 func (c *OCI8Conn) Prepare(query string) (driver.Stmt, error) {
@@ -615,7 +615,7 @@ func (s *OCI8Stmt) Close() error {
 		return nil
 	}
 	s.closed = true
-
+	s.pbind = nil
 	C.OCIHandleFree(
 		s.s,
 		C.OCI_HTYPE_STMT)
@@ -631,6 +631,20 @@ func (s *OCI8Stmt) NumInput() int {
 		return -1
 	}
 	return int(r.num)
+}
+
+func getInt64(p unsafe.Pointer) int64 {
+	buf := (*[1 << 30]byte)(p)[0:8]
+
+	ret := int64(buf[0])
+	ret += int64(buf[1]) << 8
+	ret += int64(buf[2]) << 16
+	ret += int64(buf[3]) << 24
+	ret += int64(buf[4]) << 32
+	ret += int64(buf[5]) << 40
+	ret += int64(buf[6]) << 48
+	ret += int64(buf[7]) << 56
+	return ret
 }
 
 func freeBoundParameters(boundParameters []oci8bind) {
@@ -650,7 +664,47 @@ func freeBoundParameters(boundParameters []oci8bind) {
 			case C.SQLT_INTERVAL_YM:
 				freeDecriptor(col.pbuf, C.OCI_DTYPE_INTERVAL_YM)
 			default:
-				log.Printf("%s\n", C.GoString((*C.char)(col.pbuf)))
+				switch v := col.out.(type) {
+				case *string:
+					*v = C.GoString((*C.char)(col.pbuf))
+				case *[]byte:
+					// *v= []byte(C.GoString((*C.char)(col.pbuf)))
+				case *int:
+					*v = int(getInt64(col.pbuf))
+				case *int64:
+					*v = getInt64(col.pbuf)
+				case *int32:
+					*v = int32(getInt64(col.pbuf))
+				case *int16:
+					*v = int16(getInt64(col.pbuf))
+				case *int8:
+					*v = int8(getInt64(col.pbuf))
+
+				case *float64:
+
+					buf := (*[1 << 30]byte)(col.pbuf)[0:8]
+					f := uint64(buf[7])
+					f |= uint64(buf[6]) << 8
+					f |= uint64(buf[5]) << 16
+					f |= uint64(buf[4]) << 24
+					f |= uint64(buf[3]) << 32
+					f |= uint64(buf[2]) << 40
+					f |= uint64(buf[1]) << 48
+					f |= uint64(buf[0]) << 56
+
+					// Don't know why bits are inverted that way, but it works
+					if buf[0]&0x80 == 0 {
+						f ^= 0xffffffffffffffff
+					} else {
+						f &= 0x7fffffffffffffff
+					}
+
+					*v = math.Float64frombits(f)
+
+				case *bool:
+					buf := (*[1 << 30]byte)(col.pbuf)[0:1]
+					*v = buf[0] != 0
+				}
 				C.free(col.pbuf)
 			}
 		}
@@ -659,14 +713,7 @@ func freeBoundParameters(boundParameters []oci8bind) {
 
 // TODO return (output) parameters
 func (s *OCI8Stmt) ConvertValue(v interface{}) (driver.Value, error) {
-	switch v.(type) {
-	case *string:
-		log.Println("*string")
-	case *int:
-	case *int64:
-	case *[]byte:
-
-	}
+	s.pbind = append(s.pbind, oci8bind{out: v})
 	return driver.DefaultParameterConverter.ConvertValue(v)
 }
 
@@ -674,7 +721,7 @@ func (s *OCI8Stmt) ColumnConverter(i int) driver.ValueConverter {
 	return s
 }
 
-func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err error) {
+func (s *OCI8Stmt) bind(args []driver.Value) ([]oci8bind, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
@@ -693,18 +740,12 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			cdata = nil
 			clen = 0
 		case []byte:
-			log.Println("BIN")
 			dty = C.SQLT_BIN
 			cdata = CByte(v)
 			clen = C.sb4(len(v))
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
-
-		case *[]byte:
-			log.Println("CHR")
-			dty = C.SQLT_CHR
-			cdata = CByte(*v)
-			clen = C.sb4(len(*v))
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case float64:
 			fb := math.Float64bits(v)
@@ -716,7 +757,9 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			dty = C.SQLT_IBDOUBLE
 			cdata = CByte([]byte{byte(fb >> 56), byte(fb >> 48), byte(fb >> 40), byte(fb >> 32), byte(fb >> 24), byte(fb >> 16), byte(fb >> 8), byte(fb)})
 			clen = 8
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case time.Time:
 
@@ -734,7 +777,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				s.c.env,
 				C.OCI_DTYPE_TIMESTAMP_TZ,
 				C.size_t(size)); ret.rv != C.OCI_SUCCESS {
-				defer freeBoundParameters(boundParameters)
+				defer freeBoundParameters(s.pbind)
 				return nil, ociGetError(ret.rv, s.c.err)
 			} else {
 				dty = C.SQLT_TIMESTAMP_TZ
@@ -742,7 +785,9 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 				pt = ret.extra
 				*(*unsafe.Pointer)(ret.extra) = ret.ptr
 				zp = unsafe.Pointer(uintptr(ret.extra) + unsafe.Sizeof(unsafe.Pointer(nil)))
-				boundParameters = append(boundParameters, oci8bind{dty, pt})
+				s.pbind[i].kind = dty
+				s.pbind[i].pbuf = pt
+				// boundParameters = append(boundParameters, oci8bind{dty, pt})
 
 			}
 
@@ -806,7 +851,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 					C.size_t(len(zone)),
 				)
 				if rv != C.OCI_SUCCESS {
-					defer freeBoundParameters(boundParameters)
+					defer freeBoundParameters(s.pbind)
 					return nil, ociGetError(rv, s.c.err)
 				}
 			}
@@ -817,7 +862,9 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			dty = C.SQLT_AFC // don't trim strings !!!
 			cdata = C.CString(v)
 			clen = C.sb4(len(v))
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		case int64:
 			dty = C.SQLT_INT
 			clen = C.sb4(8) // not tested on i386. may only work on amd64
@@ -831,26 +878,32 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			buf[5] = byte(v >> 40 & 0x0ff)
 			buf[6] = byte(v >> 48 & 0x0ff)
 			buf[7] = byte(v >> 56 & 0x0ff)
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		case bool: // oracle dont have bool, handle as 0/1
 			dty = C.SQLT_INT
 			clen = C.sb4(1)
-			cdata = (*C.char)(C.malloc(10))
+			cdata = (*C.char)(C.malloc(8))
 			if v {
 				*cdata = 1
 			} else {
 				*cdata = 0
 			}
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 
 		default:
-			log.Printf("%T\n", v)
+			log.Printf("unexpected type in bind %T\n", v)
 			dty = C.SQLT_CHR
 			d := fmt.Sprintf("%v", v)
 			clen = C.sb4(len(d))
 			cdata = C.CString(d)
-			boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
+			s.pbind[i].kind = dty
+			s.pbind[i].pbuf = unsafe.Pointer(cdata)
+			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		}
 
 		if rv := C.OCIBindByPos(
@@ -867,11 +920,11 @@ func (s *OCI8Stmt) bind(args []driver.Value) (boundParameters []oci8bind, err er
 			0,
 			nil,
 			C.OCI_DEFAULT); rv != C.OCI_SUCCESS {
-			defer freeBoundParameters(boundParameters)
+			defer freeBoundParameters(s.pbind)
 			return nil, ociGetError(rv, s.c.err)
 		}
 	}
-	return boundParameters, nil
+	return s.pbind, nil
 }
 
 func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
@@ -1189,7 +1242,7 @@ type oci8col struct {
 type oci8bind struct {
 	kind C.ub2
 	pbuf unsafe.Pointer
-	// out interface{} // original binded data type
+	out  interface{} // original binded data type
 }
 
 type OCI8Rows struct {
