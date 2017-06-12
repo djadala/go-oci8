@@ -26,7 +26,14 @@ type dbc interface {
 	QueryRow(query string, args ...interface{}) *sql.Row
 }
 
-var db *sql.DB
+var (
+	db        *sql.DB
+	// dsnStruct *oci8.DSN
+)
+
+func DB() *sql.DB {
+	return db
+}
 
 func init() {
 	os.Setenv("NLS_LANG", "BULGARIAN_BULGARIA.AL32UTF8")
@@ -41,6 +48,11 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+
+	// dsnStruct, err = oci8.ParseDSN(dsn)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	db.Exec("drop table foo")
 	_, err = db.Exec(sql1)
@@ -323,6 +335,9 @@ func TestBytes2(t *testing.T) {
 }
 
 func TestQuestionMark(t *testing.T) {
+	// if !dsnStruct.enableQMPlaceholders {
+	// 	return
+	// }
 	fmt.Println("test question mark placeholders")
 	a, b := 4, 5
 	c := "zz"

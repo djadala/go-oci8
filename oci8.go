@@ -76,6 +76,39 @@ WrapOCIAttrGetUb4(dvoid *ss, ub4 hType, ub4 aType, OCIError *err) {
 }
 
 typedef struct {
+  OraText rowid[19];
+  sword rv;
+} retRowid;
+
+static retRowid
+WrapOCIAttrRowId(dvoid *ss, dvoid *st, ub4 hType, ub4 aType, OCIError *err) {
+  OCIRowid *ptr;
+  ub4 size;
+  retRowid vvv;
+  vvv.rv = OCIDescriptorAlloc(
+    ss,
+    (dvoid*)&ptr,
+    OCI_DTYPE_ROWID,
+    0,
+    NULL);
+  if (vvv.rv == OCI_SUCCESS) {
+    vvv.rv = OCIAttrGet(
+      st,
+      hType,
+      ptr,
+      &size,
+      aType,
+      err);
+    if (vvv.rv == OCI_SUCCESS) {
+      ub2 idsize = 18;
+      memset(vvv.rowid, 0, sizeof(vvv.rowid));
+      vvv.rv = OCIRowidToChar(ptr, vvv.rowid, &idsize, err);
+    }
+  }
+  return vvv;
+}
+
+typedef struct {
   char *ptr;
   ub4 size;
   sword rv;
@@ -155,6 +188,8 @@ WrapOCIHandleAlloc(dvoid *parrent, ub4 type, size_t extra) {
 
 static ret2ptr
 WrapOCIEnvCreate(ub4 mode, size_t extra) {
+  OCIEnv *env;
+  ub2 charsetid = 0;
   ret2ptr vvv = {NULL, NULL, 0};
   void *ptr;
   if (extra == 0)  {
@@ -162,7 +197,12 @@ WrapOCIEnvCreate(ub4 mode, size_t extra) {
   } else {
     ptr = &vvv.extra;
   }
-  vvv.rv = OCIEnvCreate(
+  if (getenv("NLS_LANG") == NULL && !OCIEnvInit(&env, OCI_DEFAULT, 0, NULL)) {
+    charsetid = OCINlsCharSetNameToId(env, (const oratext*)"AL32UTF8");
+    OCIHandleFree(env, OCI_HTYPE_ENV);
+  }
+
+  vvv.rv = OCIEnvNlsCreate(
     (OCIEnv**)(&vvv.ptr),
     mode,
     NULL,
@@ -170,7 +210,9 @@ WrapOCIEnvCreate(ub4 mode, size_t extra) {
     NULL,
     NULL,
     extra,
-    ptr);
+    ptr,
+    charsetid,
+    charsetid);
   return vvv;
 }
 
@@ -318,14 +360,22 @@ import (
 
 const blobBufSize = 4000
 
+/**
+ORA-03114: Not Connected to Oracle
+ORA-01012: Not logged on
+ORA-03113: end-of-file on communication channel
+*/
+var badConnCodes = []string{"ORA-03114", "ORA-01012", "ORA-03113"}
+
 type DSN struct {
-	Connect         string
-	Username        string
-	Password        string
-	prefetch_rows   uint32
-	prefetch_memory uint32
-	Location        *time.Location
-	transactionMode C.ub4
+	Connect              string
+	Username             string
+	Password             string
+	prefetch_rows        uint32
+	prefetch_memory      uint32
+	Location             *time.Location
+	transactionMode      C.ub4
+	enableQMPlaceholders bool
 }
 
 func init() {
@@ -336,14 +386,16 @@ type OCI8Driver struct {
 }
 
 type OCI8Conn struct {
-	svc             unsafe.Pointer
-	env             unsafe.Pointer
-	err             unsafe.Pointer
-	prefetch_rows   uint32
-	prefetch_memory uint32
-	location        *time.Location
-	transactionMode C.ub4
-	inTransaction   bool
+	svc                  unsafe.Pointer
+	env                  unsafe.Pointer
+	err                  unsafe.Pointer
+	prefetch_rows        uint32
+	prefetch_memory      uint32
+	location             *time.Location
+	transactionMode      C.ub4
+	inTransaction        bool
+	enableQMPlaceholders bool
+	//	closed               bool
 }
 
 type OCI8Tx struct {
@@ -361,6 +413,7 @@ type OCI8Tx struct {
 // 2 'isolation' =READONLY,SERIALIZABLE,DEFAULT
 // 3 'prefetch_rows'
 // 4 'prefetch_memory'
+// 5 'questionph' =YES,NO,TRUE,FALSE enable question-mark placeholders, default to false
 func ParseDSN(dsnString string) (dsn *DSN, err error) {
 
 	dsn = &DSN{Location: time.Local}
@@ -375,7 +428,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		dsnString = dsnString[len(prefix):]
 	}
 
-	authority, dsnString := split(dsnString, "@")
+	authority, dsnString := splitRight(dsnString, "@")
 	if authority != "" {
 		dsn.Username, dsn.Password, err = parseAuthority(authority)
 		if err != nil {
@@ -383,7 +436,7 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 		}
 	}
 
-	host, params := split(dsnString, "?")
+	host, params := splitRight(dsnString, "?")
 
 	if host, err = unescape(host, encodeHost); err != nil {
 		return nil, err
@@ -414,16 +467,25 @@ func ParseDSN(dsnString string) (dsn *DSN, err error) {
 			default:
 				return nil, fmt.Errorf("Invalid isolation: %v", v[0])
 			}
+		case "questionph":
+			switch v[0] {
+			case "YES", "TRUE":
+				dsn.enableQMPlaceholders = true
+			case "NO", "FALSE":
+				dsn.enableQMPlaceholders = false
+			default:
+				return nil, fmt.Errorf("Invalid questionpm: %v", v[0])
+			}
 		case "prefetch_rows":
 			z, err := strconv.ParseUint(v[0], 10, 32)
 			if err != nil {
-				return nil, fmt.Errorf("invalid prefetch_rows", v[0])
+				return nil, fmt.Errorf("invalid prefetch_rows: %v", v[0])
 			}
 			dsn.prefetch_rows = uint32(z)
 		case "prefetch_memory":
 			z, err := strconv.ParseUint(v[0], 10, 32)
 			if err != nil {
-				return nil, fmt.Errorf("invalid prefetch_memory", v[0])
+				return nil, fmt.Errorf("invalid prefetch_memory: %v", v[0])
 			}
 			dsn.prefetch_memory = uint32(z)
 		default:
@@ -512,7 +574,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		conn.env,
 		C.OCI_HTYPE_ERROR,
 		0); rv.rv != C.OCI_SUCCESS {
-		return nil, errors.New("cant  allocate error handle")
+		return nil, errors.New("cant allocate error handle")
 	} else {
 		conn.err = rv.ptr
 	}
@@ -532,7 +594,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 		(*C.OraText)(unsafe.Pointer(ppass)),
 		C.ub4(len(dsn.Password)),
 		(*C.OraText)(unsafe.Pointer(phost)),
-		C.ub4(len(dsn.Connect))); rv.rv != C.OCI_SUCCESS {
+		C.ub4(len(dsn.Connect))); rv.rv != C.OCI_SUCCESS && rv.rv != C.OCI_SUCCESS_WITH_INFO {
 		return nil, ociGetError(rv.rv, conn.err)
 	} else {
 		conn.svc = rv.ptr
@@ -541,6 +603,7 @@ func (d *OCI8Driver) Open(dsnString string) (connection driver.Conn, err error) 
 	conn.transactionMode = dsn.transactionMode
 	conn.prefetch_rows = dsn.prefetch_rows
 	conn.prefetch_memory = dsn.prefetch_memory
+	conn.enableQMPlaceholders = dsn.enableQMPlaceholders
 	return &conn, nil
 }
 
@@ -557,12 +620,6 @@ func (c *OCI8Conn) Close() error {
 		c.env,
 		C.OCI_HTYPE_ENV); rv != C.OCI_SUCCESS {
 		log.Println(ociGetError(rv, c.err))
-	}
-
-	if rv := C.OCIHandleFree(
-		c.err,
-		C.OCI_HTYPE_ERROR); rv != C.OCI_SUCCESS {
-		log.Println("OCIHandleFree return", rv)
 	}
 
 	c.svc = nil
@@ -818,6 +875,7 @@ func (s *OCI8Stmt) bind(args []driver.Value) ([]oci8bind, error) {
 					(*C.OCIError)(s.c.err),
 					(*C.OCIDateTime)(*(*unsafe.Pointer)(pt)))
 				if rvz.rv != C.OCI_SUCCESS {
+					defer freeBoundParameters(s.pbind)
 					return nil, ociGetError(rvz.rv, s.c.err)
 				}
 				if offset != int(rvz.h)*60*60+int(rvz.m)*60 {
@@ -862,8 +920,12 @@ func (s *OCI8Stmt) bind(args []driver.Value) ([]oci8bind, error) {
 		case string:
 			dty = C.SQLT_AFC // don't trim strings !!!
 			cdata = C.CString(v)
-			clen = C.sb4(len(v))
-			s.pbind[i].kind = dty
+			clen = C.sb4(len(v)+1)
+			if s.pbind[i].kind != C.SQLT_STR {  // trim out strings
+				s.pbind[i].kind = dty
+			} else {
+				dty = s.pbind[i].kind
+			}
 			s.pbind[i].pbuf = unsafe.Pointer(cdata)
 			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})
 		case int64:
@@ -1221,7 +1283,7 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 		nil,
 		nil,
 		mode)
-	if rv != C.OCI_SUCCESS {
+	if rv != C.OCI_SUCCESS && rv != C.OCI_SUCCESS_WITH_INFO {
 		return nil, ociGetError(rv, s.c.err)
 	}
 	n, en := s.rowsAffected()
@@ -1305,7 +1367,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 		return io.EOF
 		//} else if rv == C.OCI_SUCCESS_WITH_INFO {
 		//	log.Println( "OCI_SUCCESS_WITH_INFO", ociGetError(rc.s.c.err))
-	} else if rv != C.OCI_SUCCESS {
+	} else if rv != C.OCI_SUCCESS && rv != C.OCI_SUCCESS_WITH_INFO {
 		err := ociGetError(rv, rc.s.c.err)
 		log.Println("OCI_SUCCESS!=", rv, err)
 		return err
@@ -1336,7 +1398,7 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 				int(buf[6])-1,
 				0,
 				rc.s.c.location)
-		case C.SQLT_BLOB, C.SQLT_CLOB: //, C.SQLT_LNG:
+		case C.SQLT_BLOB, C.SQLT_CLOB:
 			ptmp := unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(unsafe.Pointer(nil)))
 			bamt := (*C.ub4)(ptmp)
 			ptmp = unsafe.Pointer(uintptr(rc.cols[i].pbuf) + unsafe.Sizeof(C.ub4(0)) + unsafe.Sizeof(unsafe.Pointer(nil)))
@@ -1513,9 +1575,24 @@ func (rc *OCI8Rows) Next(dest []driver.Value) error {
 func ociGetErrorS(err unsafe.Pointer) error {
 	rv := C.WrapOCIErrorGet((*C.OCIError)(err))
 	s := C.GoString(&rv.err[0])
+	if isBadConnection(s) {
+		return driver.ErrBadConn
+	}
 	return errors.New(s)
 }
 
+func isBadConnection(error string) bool {
+	if len(error) <= 8 {
+		return false
+	}
+	errorCode := error[0:9]
+	for _, badConnCode := range badConnCodes {
+		if badConnCode == errorCode {
+			return true
+		}
+	}
+	return false
+}
 func ociGetError(rv C.sword, err unsafe.Pointer) error {
 	switch rv {
 	case C.OCI_INVALID_HANDLE:
