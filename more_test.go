@@ -162,6 +162,24 @@ func sqlstestv(d dbc, t *testing.T, sql string, p ...interface{}) []interface{} 
 	return res
 }
 
+func TestOutputBind(t *testing.T) {
+
+	fmt.Println("output bind parameters")
+
+	sql := `begin  :1 := 42; :2 := 'ddddd' ; :3 := 2; end;`
+
+	s1 := "                             "
+	s2 := 11
+	s3 := false
+	_, err := db.Exec(sql, &s2, &s1, &s3)
+	if err != nil {
+		log.Println(err)
+		t.Fatal(err)
+	}
+	log.Println("==", s1, "--", s2, s3)
+
+}
+
 func TestSelect1(t *testing.T) {
 
 	//rows, err := db.Query("select :1 as AA, :2 as BB, NUMTODSINTERVAL( :3, 'SECOND') as DD, NUMTOYMINTERVAL( :4, 'MONTH') as FF, :4 as nil from dual", time.Now(), 3.14, 3.004, 55, nil)

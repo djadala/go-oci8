@@ -633,20 +633,6 @@ func (s *OCI8Stmt) NumInput() int {
 	return int(r.num)
 }
 
-func getInt64(p unsafe.Pointer) int64 {
-	buf := (*[1 << 30]byte)(p)[0:8]
-
-	ret := int64(buf[0])
-	ret += int64(buf[1]) << 8
-	ret += int64(buf[2]) << 16
-	ret += int64(buf[3]) << 24
-	ret += int64(buf[4]) << 32
-	ret += int64(buf[5]) << 40
-	ret += int64(buf[6]) << 48
-	ret += int64(buf[7]) << 56
-	return ret
-}
-
 func freeBoundParameters(boundParameters []oci8bind) {
 	for _, col := range boundParameters {
 		if col.pbuf != nil {
@@ -664,61 +650,76 @@ func freeBoundParameters(boundParameters []oci8bind) {
 			case C.SQLT_INTERVAL_YM:
 				freeDecriptor(col.pbuf, C.OCI_DTYPE_INTERVAL_YM)
 			default:
-				switch v := col.out.(type) {
-				case *string:
-					*v = C.GoString((*C.char)(col.pbuf))
-				case *[]byte:
-					// *v= []byte(C.GoString((*C.char)(col.pbuf)))
-				case *int:
-					*v = int(getInt64(col.pbuf))
-				case *int64:
-					*v = getInt64(col.pbuf)
-				case *int32:
-					*v = int32(getInt64(col.pbuf))
-				case *int16:
-					*v = int16(getInt64(col.pbuf))
-				case *int8:
-					*v = int8(getInt64(col.pbuf))
-
-				case *float64:
-
-					buf := (*[1 << 30]byte)(col.pbuf)[0:8]
-					f := uint64(buf[7])
-					f |= uint64(buf[6]) << 8
-					f |= uint64(buf[5]) << 16
-					f |= uint64(buf[4]) << 24
-					f |= uint64(buf[3]) << 32
-					f |= uint64(buf[2]) << 40
-					f |= uint64(buf[1]) << 48
-					f |= uint64(buf[0]) << 56
-
-					// Don't know why bits are inverted that way, but it works
-					if buf[0]&0x80 == 0 {
-						f ^= 0xffffffffffffffff
-					} else {
-						f &= 0x7fffffffffffffff
-					}
-
-					*v = math.Float64frombits(f)
-
-				case *bool:
-					buf := (*[1 << 30]byte)(col.pbuf)[0:1]
-					*v = buf[0] != 0
-				}
 				C.free(col.pbuf)
 			}
+			col.pbuf = nil
 		}
 	}
 }
 
-// TODO return (output) parameters
-func (s *OCI8Stmt) ConvertValue(v interface{}) (driver.Value, error) {
-	s.pbind = append(s.pbind, oci8bind{out: v})
-	return driver.DefaultParameterConverter.ConvertValue(v)
+func getInt64(p unsafe.Pointer) int64 {
+	buf := (*[1 << 30]byte)(p)[0:8]
+
+	ret := int64(buf[0])
+	ret += int64(buf[1]) << 8
+	ret += int64(buf[2]) << 16
+	ret += int64(buf[3]) << 24
+	ret += int64(buf[4]) << 32
+	ret += int64(buf[5]) << 40
+	ret += int64(buf[6]) << 48
+	ret += int64(buf[7]) << 56
+	return ret
 }
 
-func (s *OCI8Stmt) ColumnConverter(i int) driver.ValueConverter {
-	return s
+func outputBoundParameters(boundParameters []oci8bind) {
+	for _, col := range boundParameters {
+		if col.pbuf != nil {
+			// if col.kind == 0 {
+			// log.Println(col.kind)
+			switch v := col.out.(type) {
+			case *string:
+				*v = C.GoString((*C.char)(col.pbuf))
+			// case *[]byte:
+			//	 *v= []byte(C.GoString((*C.char)(col.pbuf)))
+			case *int:
+				*v = int(getInt64(col.pbuf))
+			case *int64:
+				*v = getInt64(col.pbuf)
+			case *int32:
+				*v = int32(getInt64(col.pbuf))
+			case *int16:
+				*v = int16(getInt64(col.pbuf))
+			case *int8:
+				*v = int8(getInt64(col.pbuf))
+
+			case *float64:
+
+				buf := (*[1 << 30]byte)(col.pbuf)[0:8]
+				f := uint64(buf[7])
+				f |= uint64(buf[6]) << 8
+				f |= uint64(buf[5]) << 16
+				f |= uint64(buf[4]) << 24
+				f |= uint64(buf[3]) << 32
+				f |= uint64(buf[2]) << 40
+				f |= uint64(buf[1]) << 48
+				f |= uint64(buf[0]) << 56
+
+				// Don't know why bits are inverted that way, but it works
+				if buf[0]&0x80 == 0 {
+					f ^= 0xffffffffffffffff
+				} else {
+					f &= 0x7fffffffffffffff
+				}
+
+				*v = math.Float64frombits(f)
+
+			case *bool:
+				buf := (*[1 << 30]byte)(col.pbuf)[0:1]
+				*v = buf[0] != 0
+			}
+			//}
+		}
+	}
 }
 
 func (s *OCI8Stmt) bind(args []driver.Value) ([]oci8bind, error) {
@@ -1154,6 +1155,7 @@ func (s *OCI8Stmt) Query(args []driver.Value) (rows driver.Rows, err error) {
 			return nil, ociGetError(rv, s.c.err)
 		}
 	}
+	outputBoundParameters(fbp)
 	return &OCI8Rows{s, oci8cols, false, indrlenptr}, nil
 }
 
@@ -1226,6 +1228,7 @@ func (s *OCI8Stmt) Exec(args []driver.Value) (r driver.Result, err error) {
 	//if n > 0 {
 	//id, ei := s.lastInsertId()
 	//}
+	outputBoundParameters(fbp)
 	return &OCI8Result{n: n, errn: en}, nil
 	//return &OCI8Result{n: n, errn: en, id: id, ei: ei}, nil
 }
