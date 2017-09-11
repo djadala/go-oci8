@@ -27,7 +27,7 @@ type dbc interface {
 }
 
 var (
-	db        *sql.DB
+	db *sql.DB
 	// dsnStruct *oci8.DSN
 )
 

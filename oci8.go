@@ -364,8 +364,9 @@ const blobBufSize = 4000
 ORA-03114: Not Connected to Oracle
 ORA-01012: Not logged on
 ORA-03113: end-of-file on communication channel
+ORA-12528: TNS:listener: all appropriate instances are blocking new connections
 */
-var badConnCodes = []string{"ORA-03114", "ORA-01012", "ORA-03113"}
+var badConnCodes = []string{"ORA-03114", "ORA-01012", "ORA-03113", "ORA-12528"}
 
 type DSN struct {
 	Connect              string
@@ -717,15 +718,7 @@ func freeBoundParameters(boundParameters []oci8bind) {
 func getInt64(p unsafe.Pointer) int64 {
 	buf := (*[1 << 30]byte)(p)[0:8]
 
-	ret := int64(buf[0])
-	ret += int64(buf[1]) << 8
-	ret += int64(buf[2]) << 16
-	ret += int64(buf[3]) << 24
-	ret += int64(buf[4]) << 32
-	ret += int64(buf[5]) << 40
-	ret += int64(buf[6]) << 48
-	ret += int64(buf[7]) << 56
-	return ret
+	return int64(*(*C.sb8)(p))
 }
 
 func outputBoundParameters(boundParameters []oci8bind) {
@@ -920,11 +913,13 @@ func (s *OCI8Stmt) bind(args []driver.Value) ([]oci8bind, error) {
 		case string:
 			dty = C.SQLT_AFC // don't trim strings !!!
 			cdata = C.CString(v)
-			clen = C.sb4(len(v)+1)
-			if s.pbind[i].kind != C.SQLT_STR {  // trim out strings
+			clen = C.sb4(len(v))
+			if s.pbind[i].kind != C.SQLT_STR { // trim out strings
 				s.pbind[i].kind = dty
 			} else {
 				dty = s.pbind[i].kind
+				// clen++
+				*cdata = 0
 			}
 			s.pbind[i].pbuf = unsafe.Pointer(cdata)
 			// boundParameters = append(boundParameters, oci8bind{dty, unsafe.Pointer(cdata)})

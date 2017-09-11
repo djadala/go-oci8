@@ -13,7 +13,7 @@ func (s *OCI8Stmt) ConvertValue(v interface{}) (driver.Value, error) {
 	case *string:
 		kind = C.SQLT_STR
 	}
-	s.pbind = append(s.pbind, oci8bind{out: v,kind:kind})
+	s.pbind = append(s.pbind, oci8bind{out: v, kind: kind})
 	return driver.DefaultParameterConverter.ConvertValue(v)
 }
 
